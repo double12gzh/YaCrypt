@@ -1,0 +1,11 @@
+# Rust files
+*.rs linguist-language=Rust
+*.rs text eol=lf
+
+# Cargo files
+Cargo.toml text eol=lf
+Cargo.lock -diff merge=union
+
+# Documentation files
+*.md text eol=lf
+*.txt text eol=lf
