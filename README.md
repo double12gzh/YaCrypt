@@ -1,5 +1,7 @@
 # YaCrypt
 
+[ZH](./README_CN.md)|[EN](./README.md)
+
 Ultra-secure encryption/decryption tool built with Rust. Features zero secret leakage through memory locking, zeroization, and strict file permissions.
 
 ## Features
