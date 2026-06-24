@@ -1,0 +1,11 @@
+# Rust 文件
+*.rs linguist-language=Rust
+*.rs text eol=lf
+
+# Cargo 文件
+Cargo.toml text eol=lf
+Cargo.lock -diff merge=union
+
+# 文档文件
+*.md text eol=lf
+*.txt text eol=lf

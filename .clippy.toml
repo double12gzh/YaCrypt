@@ -1,0 +1,8 @@
+# 复杂度阈值
+# cognitive-complexity-threshold = 25
+# type-complexity-threshold = 100
+
+# 其他阈值
+too-many-arguments-threshold = 10
+too-many-lines-threshold = 300
+max-struct-bools = 3

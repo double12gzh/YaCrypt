@@ -1,0 +1,27 @@
+repos:
+  - repo: local
+    hooks:
+      - id: rust-fmt
+        name: rustfmt
+        entry: cargo fmt -- --check
+        language: system
+        pass_filenames: false
+        
+      - id: rust-clippy
+        name: clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        pass_filenames: false
+        
+      - id: rust-test
+        name: test
+        entry: cargo test
+        language: system
+        pass_filenames: false
+        
+      # - id: cargo-audit
+      #   name: audit
+      #   entry: cargo audit
+      #   language: system
+      #   pass_filenames: false
+      #   args: ["--ignore", "RUSTSEC-2023-0001"]
