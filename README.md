@@ -1,5 +1,7 @@
 # YaCrypt
 
+[ZH](README.md)|[EN](README_EN.md)
+
 ## 简介
 
 `YaCrypt` 是一个安全的文件加密/解密命令行工具，基于现代密码学原语构建。
