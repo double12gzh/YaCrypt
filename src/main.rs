@@ -32,9 +32,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::EncryptFileWithKey { input, public_key, output } => {
             file_ops::cmd_encrypt_file_with_key(input, public_key, output.as_deref(), None)
         }
-        Commands::DecryptFileWithKey { input, private_key, output } => {
-            workflow::cmd_decrypt_workflow(input, private_key, output.as_deref())
-        }
         Commands::Encrypt { input, name, email, output, key } => {
             workflow::cmd_encrypt_workflow(input, name, email, output.as_deref(), key.as_deref())
         }
