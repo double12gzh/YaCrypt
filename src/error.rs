@@ -4,7 +4,6 @@ use std::io;
 
 /// 应用级错误类型，替代 `Box<dyn Error>` 和裸 `String`
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum CryptError {
     /// IO 操作错误（文件读写、权限等）
     Io(io::Error),
@@ -14,10 +13,6 @@ pub enum CryptError {
     Format(String),
     /// 密钥相关错误（长度、编码、派生等）
     Key(String),
-    /// 密码相关错误（长度验证、输入失败等）
-    Password(String),
-    /// 签名验证错误
-    Signature(String),
 }
 
 impl fmt::Display for CryptError {
@@ -27,8 +22,6 @@ impl fmt::Display for CryptError {
             CryptError::Crypto(s) => write!(f, "Crypto error: {}", s),
             CryptError::Format(s) => write!(f, "Format error: {}", s),
             CryptError::Key(s) => write!(f, "Key error: {}", s),
-            CryptError::Password(s) => write!(f, "Password error: {}", s),
-            CryptError::Signature(s) => write!(f, "Signature error: {}", s),
         }
     }
 }

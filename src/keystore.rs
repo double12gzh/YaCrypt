@@ -20,7 +20,6 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
 };
-use tempfile::tempdir;
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 use zeroize::Zeroize;
 
@@ -43,8 +42,6 @@ pub fn generate_and_store_keys(
     email: &str,
 ) -> Result<GeneratedKeys, Box<dyn std::error::Error>> {
     try_mlockall();
-
-    let _tempd = tempdir()?;
 
     // generate ed25519 keypair using cryptographically secure RNG
     let mut secret_bytes = [0u8; 32];

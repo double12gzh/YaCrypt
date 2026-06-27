@@ -30,7 +30,6 @@ libc = "0.2"
 pkcs8 = { version = "0.10", features = ["alloc"] }
 rand = "0.8.0"
 sha2 = "0.10"
-tempfile = "3.10"
 zeroize = { version = "1.7", features = ["zeroize_derive"] }
 
 [features]

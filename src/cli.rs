@@ -43,18 +43,6 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
-    /// Decrypt a file using an encrypted X25519 private key
-    DecryptFileWithKey {
-        /// Input encrypted file to decrypt (usually with .pubenc extension)
-        #[arg(short, long)]
-        input: PathBuf,
-        /// Encrypted X25519 private key file (from keystore/x25519_private_*.asc.enc)
-        #[arg(short, long)]
-        private_key: PathBuf,
-        /// Output decrypted file (default: input without .pubenc extension)
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
     /// Encrypt file: generate keypair (or reuse existing), encrypt keys, encrypt file, sign file.
     /// By default generates a new keypair. Use --key to reuse an existing keypair.
     Encrypt {
