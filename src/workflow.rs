@@ -253,7 +253,9 @@ pub fn cmd_decrypt_workflow(
         None => {
             let mut path = input.to_path_buf();
             if path.extension().and_then(|s| s.to_str()) == Some("pubenc") {
-                path.set_extension("");
+                // Strip the .pubenc extension without leaving a trailing dot
+                let file_name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_owned()).unwrap_or_else(|| "decrypted".to_owned());
+                path.set_file_name(file_name);
             } else {
                 path.set_extension("decrypted");
             }
