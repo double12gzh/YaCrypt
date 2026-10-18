@@ -1,0 +1,11 @@
+🔓 Step 1/2: Decrypting private key...
+Enter private key password: 
+[1A[2K[1B[1AEnter private key password: [hidden]
+✅ Private key decrypted
+🔓 Step 2/2: Decrypting and verifying file...
+
+thread 'main' (90) panicked at src/crypto.rs:358:26:
+slice index starts at 72 but ends at 71
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+DRIVE_EXIT=SIGNAL:6

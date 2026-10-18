@@ -1,0 +1,6 @@
+Fix-verification for commit 14e7460 (verified 2026-10-18)
+release binary sha256: 6c323c623b808d052b7d47715b18f4f6dde87c76ced5cb61f4ab1ede3caee642
+Cargo.lock sha256 (first 32): 67faaa08a9b711050f3f4154e6a9a034
+toolchain: rustc 1.99.1 (58cf8f9c3 2026-10-13)
+results: V0-V11 all passed; 49/49 tests passed (44 unit + 5 integration); clippy -D warnings clean; cargo-deny 0.20.2 advisories/bans/licenses/sources OK
+environment: aarch64 Linux, RLIMIT_MEMLOCK=8 MiB (the configuration in which the pre-fix binary aborted)

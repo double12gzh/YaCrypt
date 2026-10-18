@@ -1,0 +1,64 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/main.rs (/tmp/yacrypt-target/debug/deps/yacrypt-66aba04c84f1347d)
+
+running 45 tests
+test crypto::tests::decrypt_with_aad_rejects_invalid_nonce_len ... ok
+test crypto::tests::decrypt_fails_wrong_aad ... ok
+test crypto::tests::decrypt_fails_wrong_key ... ok
+test crypto::tests::decrypt_fails_tampered_ciphertext ... ok
+test crypto::tests::derive_key_rejects_below_min_mem ... ok
+test crypto::tests::derive_key_rejects_excessive_mem ... ok
+test crypto::tests::derive_key_rejects_excessive_p_cost ... ok
+test crypto::tests::derive_key_rejects_excessive_t_cost ... ok
+test crypto::tests::derive_key_rejects_invalid_salt_len ... ok
+test crypto::tests::derive_key_rejects_zero_p_cost ... ok
+test crypto::tests::derive_key_rejects_zero_t_cost ... ok
+test crypto::tests::encrypt_decrypt_roundtrip ... ok
+test crypto::tests::encrypted_blob_rejects_bad_magic ... ok
+test crypto::tests::encrypted_blob_rejects_empty ... ok
+test crypto::tests::encrypted_blob_rejects_invalid_nonce_len ... ok
+test crypto::tests::encrypted_blob_rejects_overflow_ct_len ... ok
+test crypto::tests::encrypted_blob_rejects_trailing_bytes ... ok
+test crypto::tests::encrypted_blob_rejects_truncated ... ok
+test crypto::tests::encrypted_blob_roundtrip ... ok
+test crypto::tests::derive_key_roundtrip ... ok
+test crypto::tests::full_pubenc_e2e ... ok
+test crypto::tests::hkdf_deterministic ... ok
+test crypto::tests::hkdf_different_info ... ok
+test crypto::tests::pack_encrypted_blob_rejects_oversized_aad ... ok
+test crypto::tests::pack_pubenc_blob_rejects_oversized_aad ... ok
+test crypto::tests::pubenc_rejects_bad_magic ... ok
+test crypto::tests::pubenc_rejects_overflow_ct_len ... ok
+test crypto::tests::pubenc_rejects_trailing_bytes ... ok
+test crypto::tests::full_blob_e2e ... ok
+test crypto::tests::pubenc_rejects_unknown_flags ... ok
+test crypto::tests::pubenc_roundtrip_no_sig ... ok
+test crypto::tests::pubenc_roundtrip_with_sig ... ok
+test password::tests::password_length_matches_request ... ok
+test password::tests::password_rejects_excessive_length ... ok
+test password::tests::password_rejects_zero_length ... ok
+test utils::tests::fingerprint_deterministic ... ok
+test utils::tests::fingerprint_different_input ... ok
+test utils::tests::parse_aad_map_valid_and_invalid ... ok
+test utils::tests::write_file_strict_rejects_fifo_without_blocking ... ok
+test workflow::tests::resolve_signer_fingerprint_prefers_hex_over_path ... ok
+test workflow::tests::resolve_signer_fingerprint_accepts_pubkey_file_and_rejects_garbage ... ok
+test workflow::tests::verify_rejects_forged_signer_fingerprint_h1 ... ok
+test utils::tests::write_file_strict_enforces_no_overwrite_and_0600_and_no_symlink ... ok
+test workflow::tests::verify_rejects_stripped_signature_m1 ... ok
+test workflow::tests::verify_rejects_unsigned_when_signature_required ... ok
+
+test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/cli_e2e.rs (/tmp/yacrypt-target/debug/deps/cli_e2e-59f43dee43e0628d)
+
+running 6 tests
+test cli_gen_password_and_bounds ... ok
+test cli_help_does_not_claim_libsodium_i2 ... ok
+test cli_rejects_low_order_x25519_public_key_l1 ... ok
+test cli_encrypt_with_key_safe_write_semantics_and_no_cleartext_filename_leak ... ok
+test cli_encrypt_failure_rolls_back_fresh_keypair ... ok
+test cli_full_interactive_workflow_and_attack_pocs ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.64s
+

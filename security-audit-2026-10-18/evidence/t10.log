@@ -1,0 +1,6 @@
+🔓 Step 1/2: Decrypting private key...
+Enter private key password: 
+[1A[2K[1B[1AEnter private key password: [hidden]
+Error: Crypto("Decryption failed — wrong password or file tampered")
+
+DRIVE_EXIT=1

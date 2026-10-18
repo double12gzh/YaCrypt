@@ -1,0 +1,25 @@
+🔐 Step 1/2: Generating keypair and encrypting keys...
+⚠️  mlockall failed (perms?). Secrets may be swapped to disk.
+Auto-generate backup encryption password? [Y/n] [?25l[2KAuto-generate backup encryption password? yes
+[?25h✅ Backup password generated:
+   Yv6x7EvUESoZJ3XrJX880TMD2oIRE04G3b1z5LPD9jnvKGnfzVtbtse16s8TtrPJ
+   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.
+✅ Keys generated and encrypted. Fingerprint: 92DECFBD07D097FF724B6EDA1C3000CED14BBBA5033C6F11314C1C8B2AF5BBDE
+🔐 Step 2/2: Signing and encrypting file...
+✅ File encrypted with public key: f2.pubenc
+✅ Complete encryption workflow finished!
+
+📦 Generated files:
+   - Encrypted file:       f2.pubenc
+   - Public key:           keystore/x25519_public_92DECFBD07D097FF724B6EDA1C3000CED14BBBA5033C6F11314C1C8B2AF5BBDE.asc
+   - Encrypted private key: keystore/x25519_private_92DECFBD07D097FF724B6EDA1C3000CED14BBBA5033C6F11314C1C8B2AF5BBDE.asc.enc
+   - Fingerprint:          92DECFBD07D097FF724B6EDA1C3000CED14BBBA5033C6F11314C1C8B2AF5BBDE
+
+📋 To decrypt this file, run:
+   yacrypt decrypt f2.pubenc \
+       --private-key keystore/x25519_private_92DECFBD07D097FF724B6EDA1C3000CED14BBBA5033C6F11314C1C8B2AF5BBDE.asc.enc
+
+📄 Decryption instructions saved to: f2.pubenc.decrypt.txt
+⚠️  Keep your encryption password safe! It is required for decryption.
+
+DRIVE_EXIT=0

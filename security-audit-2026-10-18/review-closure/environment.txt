@@ -1,0 +1,4 @@
+cargo 1.99.1 (5f94df478 2026-08-27)
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+HEAD: f5138cc fix: close M-3 metadata dictionary risk and backup-password stdout exposure
+memlock soft: 8192 KiB

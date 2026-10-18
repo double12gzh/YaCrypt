@@ -1,0 +1,12 @@
+$ strings keystore/private_<FP>.asc.enc    # encrypted Ed25519 private-key blob
+SGPGv1
+"myr
+fname=Alice|email=alice@example.com|fp=5D5559BD19026BC1DCAB067852A47FB349FB581565D19B7FA6D1230DA700E118
+:AaK
+k&a@r
+?G~{
+
+$ strings f2.pubenc    # signed .pubenc blob
+SCFv1
+file=f2.txt|ephemeral_pub=de06738335ab5f9415c64ade74bcfecf09b7b2e8662a84fccc2f7e6b11ee7072|sig_vk=11bc7e8d82132c75759dcedbe56f226ea51f055c045e2e3ec278999efb93bab8
+h-mm

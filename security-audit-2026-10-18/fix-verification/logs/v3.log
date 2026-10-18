@@ -1,0 +1,8 @@
+🔓 Step 1/2: Decrypting private key...
+Enter private key password: 
+[1A[2K[1B[1AEnter private key password: [hidden]
+✅ Private key decrypted
+🔓 Step 2/2: Decrypting and verifying file...
+Error: "❌ Signature verification FAILED — untrusted signer fingerprint 2562E4B22AD9E60B4A61E6BD54689BF7361B235BF28C402A5B62B55F4FF9EEF4 (expected 1CAF11096CF53BCC2E2C0C2ED68B25E7CE22F82502DDF266227153C731B3D34E). Decrypted content NOT written to disk."
+
+DRIVE_EXIT=1

@@ -16,3 +16,5 @@ keystore/
 .omp/
 .pi/
 *.local.md
+# macOS
+.DS_Store

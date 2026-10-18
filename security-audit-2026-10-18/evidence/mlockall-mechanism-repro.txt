@@ -1,0 +1,8 @@
+$ cc -O0 ml_repro.c -o ml_repro && ./ml_repro    # default memlock 8192 KiB
+mlockall(MCL_CURRENT|MCL_FUTURE) rc=0 (errno=0)
+malloc(64 MiB) -> NULL (failed) (errno=12)
+
+$ bash -c "ulimit -Sl 256; ./ml_repro"    # lowered memlock (mlockall fails => graceful path)
+mlockall(MCL_CURRENT|MCL_FUTURE) rc=-1 (errno=12)
+malloc(64 MiB) -> OK (errno=0)
+touch OK

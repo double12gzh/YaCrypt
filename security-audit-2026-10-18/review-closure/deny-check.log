@@ -1,0 +1,14 @@
+warning[license-not-encountered]: license was not encountered
+   ┌─ /sessions/blissful-serene-fermi/mnt/YaCrypt/deny.toml:10:6
+   │
+10 │     "ISC",
+   │      ━━━ unmatched license allowance
+
+warning[license-not-encountered]: license was not encountered
+   ┌─ /sessions/blissful-serene-fermi/mnt/YaCrypt/deny.toml:11:6
+   │
+11 │     "Zlib",
+   │      ━━━━ unmatched license allowance
+
+advisories ok, bans ok, licenses ok, sources ok
+exit code: 0
