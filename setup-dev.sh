@@ -28,11 +28,11 @@ done
 # 创建 git hooks
 echo "Setting up git hooks..."
 if [ -d .git ]; then
-    cat > .git/hooks/pre-commit << 'EOF'
+    \cat > .git/hooks/pre-commit << 'EOF'
 #!/bin/bash
 set -e
 cargo fmt -- --check
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 cargo test --locked
 if command -v cargo-audit >/dev/null 2>&1; then
     cargo audit

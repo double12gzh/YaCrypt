@@ -1,1 +1,0 @@
-../../../.agents/skills/decrypt/SKILL.md

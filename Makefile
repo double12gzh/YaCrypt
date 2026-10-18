@@ -62,7 +62,7 @@ fmt: ## 格式化代码
 .PHONY: clippy
 clippy: ## 运行 clippy 检查
 	@echo "运行 clippy 检查..."
-	cargo clippy -- -D warnings
+	cargo clippy --all-targets -- -D warnings
 	@echo "clippy 检查完成"
 
 # 安装到系统路径

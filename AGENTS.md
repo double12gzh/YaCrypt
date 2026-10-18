@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件为所有在此仓库工作的 AI 编程助手（Antigravity / Gemini、Claude Code、Codex / GPT、Cursor 等）提供统一的架构指引、安全红线及工程与 Git 规范。
+本文件为所有在此仓库工作的 AI 编程助手（Antigravity 2.0 / `agy` CLI、Claude Code、Oh-My-Pi (`omp`)、Codex / GPT、Cursor 等）提供统一的架构指引、安全红线及工程与 Git 规范。
 
 ---
 
@@ -14,13 +14,13 @@ cargo build --release                    # Release 构建（opt-level="z", LTO, 
 cargo test                               # 运行所有单元测试与集成测试
 cargo test crypto::tests::               # 仅运行 crypto 模块测试
 cargo test <test_name>                   # 运行单个指定测试
-cargo clippy --all-targets -- -D warnings # Clippy 静态检查（将警告视为错误）
+cargo clippy --all-targets -- -D warnings # Clippy 静态检查（含测试目标，将警告视为错误）
 cargo fmt -- --check                     # 检查代码格式
 cargo deny check                         # 依赖许可证与安全漏洞审计
-make all                                 # 一键执行 fmt + clippy + test + security + rebuild
+make all                                 # 单实例全量构建：fmt + clippy + test + security + rebuild（含 clean，多 Agent 并发时勿用）
 ```
 
-> **质量门禁**：`pre-commit` 钩子会自动执行 `cargo fmt -- --check`、`cargo clippy -- -D warnings` 和 `cargo test`。任何代码变更在提交前必须确保上述检查全部通过。
+> **质量门禁**：`pre-commit` 钩子会自动执行 `cargo fmt -- --check`、`cargo clippy --all-targets -- -D warnings` 和 `cargo test`（亦可通过 `/check` 技能一键触发）。任何代码变更在提交前必须确保上述检查全部通过。
 
 ### 1.2 模块依赖流
 
@@ -94,7 +94,7 @@ src/main.rs (CLI 路由分发 + try_mlockall 内存锁)
 * **强制规则**：
   1. **Author & Committer 归属人类**：执行 `git commit` 时，必须直接继承并使用当前操作者本地配置的个人身份（`user.name` 与 `user.email`），**严禁**通过 `--author`、环境变量或 `git config` 篡改或抹除人类主责任人。
   2. **AI 协同署名（强制附加）**：提交信息第 3 段（末尾）**必须显式附加** `Co-Authored-By: <Model> <noreply@...>` 尾注。
-  3. **模型名称规范**：仅使用简明的大类模型名字，**严禁携带版本号与子型号细节**（如仅使用 `Gemini`、`Claude`、`GPT`、`DeepSeek` 等；严禁使用 `Gemini 3.8 Flash`、`Claude 3.7 Sonnet`、`GPT-4o` 等）。
+  3. **模型名称规范**：仅使用实际驱动的**底层基础模型大类名称**，**严禁携带版本号、子型号细节或外层客户端/Harness 名称**（如仅使用 `Gemini`、`Claude`、`GPT`、`DeepSeek` 等；无论通过 `Antigravity`、`agy`、`Oh-My-Pi (omp)` 还是 `Claude Code` 调用，均按当前会话实际所用的底层大模型署名；严禁使用 `Gemini 3.8 Flash`、`Claude 3.7 Sonnet`、`Oh-My-Pi`、`Antigravity` 等）。
   4. **邮箱格式规范**：使用对应模型厂商的官方无回复域名：
      * Anthropic Claude 系列：`Co-Authored-By: Claude <noreply@anthropic.com>`
      * Google Gemini 系列：`Co-Authored-By: Gemini <noreply@google.com>`
@@ -127,9 +127,21 @@ src/main.rs (CLI 路由分发 + try_mlockall 内存锁)
   * **代码模块**：`crypto`、`keystore`、`file_ops`、`workflow`、`cli`、`password`、`utils`
   * **工程维护**：`deps`、`ci`、`doc`、`agent`、`release`
 
-### 2.4 独立功能变更与 Worktree 隔离
+### 2.4 多 Agent 并发协同与 Worktree 隔离规范
 
-* 在进行跨模块实验性特性开发、大型重构或未经用户显式要求在主工作区直接修改的独立功能时，必须优先使用 `git worktree` 创建隔离工作区与分支：
-  ```bash
-  git worktree add ../feature-{name} -b feature/{YYYYMMDDHHmmss}-{name}
-  ```
+当多个 Agent（Claude Code、Oh-My-Pi `omp`、`agy` CLI、Antigravity 2.0）在同一项目下同时工作时，必须严格遵守以下并发守则：
+
+1. **项目内 Worktree 隔离**：
+   * 进行跨模块实验性特性开发、大型重构或多 Agent 并发任务时，必须使用 `git worktree` 在仓库内部的 `.worktrees/` 目录下创建隔离工作区（避免越出项目根目录触发 Antigravity / `agy` 的工作区外文件访问拦截，同时保持桌面整洁）：
+     ```bash
+     git worktree add .worktrees/{name} -b feat/{YYYYMMDDHHmmss}-{name}
+     ```
+   * 若使用 Claude Code 原生隔离模式，可直接运行 `claude -w {name}`（对应 `.claude/worktrees/{name}`）。
+   * 动手修改代码前，先通过 `git branch --show-current` 确认当前所在分支与分配的任务范围一致。
+2. **严禁破坏性构建清理（防 `target/` 踩踏）**：
+   * 多 Agent 并发期间，**严禁**执行 `cargo clean`、`make clean`、`make rebuild` 或 `make all`（否则会直接清空其他正在编译或测试的 Agent 的 `target/` 目录）。
+   * 日常质量验证统一按 `/check` 技能顺序执行：`cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo test && cargo deny check`。
+3. **模块边界与危险 Git 命令禁令**：
+   * 仅修改当前任务分配的模块文件，未经用户明确指示，严禁执行跨模块全局格式化或擅自升级 `Cargo.toml` 依赖。
+   * 未经用户显式确认，**严禁**执行 `git reset --hard`、`git clean -fd`、`git checkout -- .`、`git restore .` 或 `git push --force`。
+
