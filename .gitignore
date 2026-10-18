@@ -18,3 +18,7 @@ keystore/
 *.local.md
 # macOS
 .DS_Store
+
+# Audit reports & evidence: local-only by default; commit intentionally with git add -f
+security-audit-*/
+SECURITY-AUDIT-*.md
