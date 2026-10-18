@@ -232,6 +232,7 @@ fn run_with_pty(
                 while prompt_idx < prompts_and_replies.len() {
                     let (expected, reply) = prompts_and_replies[prompt_idx];
                     if transcript.contains(expected) {
+                        std::thread::sleep(std::time::Duration::from_millis(25));
                         let _ = master.write_all(format!("{}\n", reply).as_bytes());
                         let _ = master.flush();
                         prompt_idx += 1;
