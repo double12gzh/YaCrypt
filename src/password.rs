@@ -33,12 +33,18 @@ pub fn cmd_generate_strong_password(length: usize) -> Result<(), Box<dyn std::er
         }
     }
 
-    let password_str = String::from_utf8(password.clone())
-        .map_err(|_| "Internal error: invalid password bytes")?;
+    let mut password_str = match String::from_utf8(password) {
+        Ok(s) => s,
+        Err(e) => {
+            let mut bytes = e.into_bytes();
+            bytes.zeroize();
+            return Err("Internal error: invalid password bytes".into());
+        }
+    };
     println!("{}", password_str);
 
-    // 清理密码字节
-    password.zeroize();
+    // 清理密码字符串内存
+    password_str.zeroize();
 
     Ok(())
 }

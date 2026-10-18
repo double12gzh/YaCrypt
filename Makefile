@@ -88,11 +88,11 @@ audit:
 .PHONY: security
 security: audit ## 安全扫描
 	@if command -v cargo-deny >/dev/null 2>&1; then \
-		cargo deny check advisories; \
+		cargo deny check; \
 	else \
 		echo "Installing cargo-deny..."; \
 		cargo install cargo-deny; \
-		cargo deny check advisories; \
+		cargo deny check; \
 	fi
 
 .PHONY: dev

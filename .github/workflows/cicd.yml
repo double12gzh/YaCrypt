@@ -40,10 +40,15 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Build
-        run: cargo build --verbose
+        run: cargo build --locked --verbose
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --locked --verbose
+
+      - name: Supply chain audit (cargo-deny)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses bans sources
 
   # 跨平台构建
   build:
@@ -85,7 +90,7 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Strip binary (Linux/macOS)
         run: |
@@ -207,11 +212,12 @@ jobs:
 
       - name: Sign binaries with Sigstore
         run: |
+          set -euo pipefail
           cd artifacts
-          find . -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) | while read f; do
+          while IFS= read -r f; do
             echo "Signing $f"
-            sigstore sign "$f" --bundle "$f.sigstore" || echo "Failed to sign $f, continuing..."
-          done
+            sigstore sign "$f" --bundle "$f.sigstore"
+          done < <(find . -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \))
 
       - name: Create Release
         id: create_release

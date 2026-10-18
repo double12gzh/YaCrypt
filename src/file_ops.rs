@@ -3,14 +3,14 @@ use crate::constants::XNONCE_LEN;
 use crate::crypto::{
     derive_symmetric_key_from_shared_secret, encrypt_with_aad, pack_pubenc_blob, PubencSignature,
 };
-use crate::utils::{escape_aad_field, write_file_strict};
+use crate::utils::{escape_aad_field, hash_metadata_field, write_file_strict_with_options};
 use base64::{engine::general_purpose, Engine as _};
 use chacha20poly1305::aead::OsRng;
 use ed25519_dalek::{Signer, SigningKey};
 use rand::RngCore;
 use std::{fs::File, io::Read, path::Path};
 use x25519_dalek::{EphemeralSecret, PublicKey as X25519PublicKey};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// 使用 X25519 公钥加密文件（混合加密：X25519 + XChaCha20-Poly1305）
 /// 可选地使用 Ed25519 密钥对文件签名，签名将嵌入加密文件格式中
@@ -19,6 +19,7 @@ pub fn cmd_encrypt_file_with_key(
     public_key_path: &Path,
     output: Option<&Path>,
     signing_key: Option<&SigningKey>,
+    force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 验证输入文件存在
     if !input.exists() {
@@ -48,9 +49,9 @@ pub fn cmd_encrypt_file_with_key(
         pub_bytes.try_into().map_err(|_| "Invalid public key length")?;
     let recipient_public = X25519PublicKey::from(pub_bytes_array);
 
-    // 读取要加密的文件
+    // 读取要加密的文件（使用 Zeroizing 确保明文在任何提前返回路径也被清零 L-3）
     let mut f = File::open(input)?;
-    let mut plaintext = Vec::new();
+    let mut plaintext = Zeroizing::new(Vec::new());
     f.read_to_end(&mut plaintext)?;
 
     // 如果提供了签名密钥，则对明文签名（签名将嵌入加密文件）
@@ -67,32 +68,39 @@ pub fn cmd_encrypt_file_with_key(
 
     // 执行密钥交换，得到共享密钥（EphemeralSecret 在此被消费并自动清零）
     let shared_secret = ephemeral_secret.diffie_hellman(&recipient_public);
-    let mut shared_secret_bytes = *shared_secret.as_bytes();
+    // 拒绝低阶点/全零共享密钥 (L-1)
+    if !shared_secret.was_contributory() {
+        return Err(
+            "Invalid recipient X25519 public key (non-contributory / low-order point)".into()
+        );
+    }
+    let shared_secret_bytes = Zeroizing::new(*shared_secret.as_bytes());
 
     // 使用 HKDF 从共享密钥派生加密密钥（符合 RFC 5869）
-    let mut sym_key_array = derive_symmetric_key_from_shared_secret(
+    let sym_key_array = Zeroizing::new(derive_symmetric_key_from_shared_secret(
         &shared_secret_bytes,
         &ephemeral_public_bytes,
         b"yacrypt-file-encryption-v1",
-    );
+    ));
 
     // 生成随机 nonce
     let mut nonce = [0u8; XNONCE_LEN];
     OsRng.fill_bytes(&mut nonce);
 
-    // 构建 AAD（包含文件名、临时公钥，以及签名公钥（如果有）用于防篡改）
+    // 构建 AAD（包含文件名 SHA-256 摘要、flags、临时公钥及签名公钥，防止篡改/剥离且不泄漏明文文件名 M-1, M-3）
     let filename = input.file_name().and_then(|s| s.to_str()).unwrap_or("file");
+    let file_hash = hash_metadata_field(&escape_aad_field(filename));
     let aad_str = if let Some(ref sig) = signature_data {
         format!(
-            "file={}|ephemeral_pub={}|sig_vk={}",
-            escape_aad_field(filename),
+            "file_sha256={}|flags=01|ephemeral_pub={}|sig_vk={}",
+            file_hash,
             hex::encode(ephemeral_public_bytes),
             hex::encode(sig.verifying_key)
         )
     } else {
         format!(
-            "file={}|ephemeral_pub={}",
-            escape_aad_field(filename),
+            "file_sha256={}|flags=00|ephemeral_pub={}",
+            file_hash,
             hex::encode(ephemeral_public_bytes)
         )
     };
@@ -100,10 +108,6 @@ pub fn cmd_encrypt_file_with_key(
 
     // 使用 XChaCha20-Poly1305 加密文件
     let ciphertext = encrypt_with_aad(&sym_key_array, &nonce, &plaintext, aad_bytes)?;
-
-    // 立即清理敏感数据（在打包前）
-    shared_secret_bytes.zeroize();
-    sym_key_array.zeroize();
     plaintext.zeroize();
 
     // 使用标准 pubenc 格式打包（含 magic、版本和可选签名）
@@ -113,7 +117,7 @@ pub fn cmd_encrypt_file_with_key(
         aad_bytes,
         &ciphertext,
         signature_data.as_ref(),
-    );
+    )?;
 
     // 确定输出路径
     let out_path = match output {
@@ -126,7 +130,7 @@ pub fn cmd_encrypt_file_with_key(
     };
 
     // 写入加密文件
-    write_file_strict(&out_path, &blob)?;
+    write_file_strict_with_options(&out_path, &blob, force)?;
 
     println!("✅ File encrypted with public key: {}", out_path.display());
     Ok(())

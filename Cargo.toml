@@ -4,9 +4,9 @@ version = "0.0.1"
 edition = "2021"
 authors = ["double12gzh"]
 license = "MIT"
-description = "Ultra secure encryption/decryption tool using Rust + libsodium with zero secret leakage."
-categories = ["security", "cryptography"]
-keywords = ["encryption", "sodium", "crypto"]
+description = "Secure file encryption/decryption CLI tool using Argon2id, XChaCha20-Poly1305, X25519, and Ed25519."
+categories = ["security", "cryptography", "command-line-utilities"]
+keywords = ["encryption", "cryptography", "x25519", "ed25519", "xchacha20poly1305"]
 repository = "https://github.com/double12gzh/YaCrypt"
 
 [profile.release]

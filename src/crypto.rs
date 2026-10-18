@@ -1,7 +1,7 @@
 /// 加密相关函数模块
 use crate::constants::{
-    KEY_LEN, MAGIC, MAX_ARGON_M_COST_KIB, MAX_ARGON_P_COST, MAX_ARGON_T_COST,
-    PUBENC_FLAG_HAS_SIGNATURE, PUBENC_MAGIC,
+    KEY_LEN, MAGIC, MAX_ARGON_M_COST_KIB, MAX_ARGON_P_COST, MAX_ARGON_T_COST, MIN_ARGON_M_COST_KIB,
+    PUBENC_FLAG_HAS_SIGNATURE, PUBENC_MAGIC, SALT_LEN, XNONCE_LEN,
 };
 use crate::error::CryptError;
 use argon2::{Argon2, Params};
@@ -22,11 +22,18 @@ pub fn derive_key(
     t_cost: u32,
     p_cost: u32,
 ) -> Result<[u8; KEY_LEN], CryptError> {
-    // 验证 Argon2 参数范围，防止恶意 blob 导致 OOM
-    if mem_kib > MAX_ARGON_M_COST_KIB {
+    if salt.len() != SALT_LEN {
         return Err(CryptError::Key(format!(
-            "Argon2 mem_kib {} exceeds maximum allowed {}",
-            mem_kib, MAX_ARGON_M_COST_KIB
+            "Argon2 salt length {} invalid (expected {})",
+            salt.len(),
+            SALT_LEN
+        )));
+    }
+    // 验证 Argon2 参数范围，防止恶意 blob 导致 OOM 或过弱参数
+    if !(MIN_ARGON_M_COST_KIB..=MAX_ARGON_M_COST_KIB).contains(&mem_kib) {
+        return Err(CryptError::Key(format!(
+            "Argon2 mem_kib {} out of valid range [{}, {}]",
+            mem_kib, MIN_ARGON_M_COST_KIB, MAX_ARGON_M_COST_KIB
         )));
     }
     if t_cost == 0 || t_cost > MAX_ARGON_T_COST {
@@ -70,7 +77,24 @@ pub fn pack_encrypted_blob(
     nonce: &[u8],
     aad: &[u8],
     ciphertext: &[u8],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, CryptError> {
+    if salt.len() != SALT_LEN {
+        return Err(CryptError::Format(format!(
+            "invalid salt length: expected {}, got {}",
+            SALT_LEN,
+            salt.len()
+        )));
+    }
+    if nonce.len() != XNONCE_LEN {
+        return Err(CryptError::Format(format!(
+            "invalid nonce length: expected {}, got {}",
+            XNONCE_LEN,
+            nonce.len()
+        )));
+    }
+    let aad_len = u16::try_from(aad.len())
+        .map_err(|_| CryptError::Format("AAD length exceeds maximum of 65535 bytes".into()))?;
+
     let mut out = Vec::new();
     out.extend_from_slice(MAGIC);
     out.extend_from_slice(&argon_mem_kib.to_be_bytes());
@@ -81,12 +105,11 @@ pub fn pack_encrypted_blob(
     out.push(nonce.len() as u8);
     out.extend_from_slice(nonce);
     // AAD length as u16 BE
-    let aad_len = aad.len() as u16;
     out.extend_from_slice(&aad_len.to_be_bytes());
     out.extend_from_slice(aad);
     out.extend_from_slice(&(ciphertext.len() as u64).to_be_bytes());
     out.extend_from_slice(ciphertext);
-    out
+    Ok(out)
 }
 
 /// 解析后的加密 blob 数据
@@ -105,81 +128,115 @@ pub fn unpack_encrypted_blob(data: &[u8]) -> Result<EncryptedBlob, CryptError> {
     let mut idx = 0usize;
 
     // 检查 magic
-    if data.len() < MAGIC.len() {
-        return Err(CryptError::Format("blob too small".into()));
-    }
-    if &data[..MAGIC.len()] != MAGIC {
+    let magic_slice =
+        data.get(..MAGIC.len()).ok_or_else(|| CryptError::Format("blob too small".into()))?;
+    if magic_slice != MAGIC {
         return Err(CryptError::Format("bad magic - invalid file format".into()));
     }
     idx += MAGIC.len();
 
     // 读取 Argon2 参数
-    if data.len() < idx + 12 {
-        return Err(CryptError::Format("blob missing Argon2 params".into()));
-    }
-    let mem_kib = u32::from_be_bytes([data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]);
-    idx += 4;
-    let t_cost = u32::from_be_bytes([data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]);
-    idx += 4;
-    let p_cost = u32::from_be_bytes([data[idx], data[idx + 1], data[idx + 2], data[idx + 3]]);
-    idx += 4;
+    let params_end =
+        idx.checked_add(12).ok_or_else(|| CryptError::Format("offset overflow".into()))?;
+    let params_bytes = data
+        .get(idx..params_end)
+        .ok_or_else(|| CryptError::Format("blob missing Argon2 params".into()))?;
+    let mem_kib =
+        u32::from_be_bytes([params_bytes[0], params_bytes[1], params_bytes[2], params_bytes[3]]);
+    let t_cost =
+        u32::from_be_bytes([params_bytes[4], params_bytes[5], params_bytes[6], params_bytes[7]]);
+    let p_cost =
+        u32::from_be_bytes([params_bytes[8], params_bytes[9], params_bytes[10], params_bytes[11]]);
+    idx = params_end;
 
     // 读取 salt
-    if data.len() < idx + 1 {
-        return Err(CryptError::Format("missing salt length".into()));
-    }
-    let salt_len = data[idx] as usize;
+    let salt_len =
+        *data.get(idx).ok_or_else(|| CryptError::Format("missing salt length".into()))? as usize;
     idx += 1;
-    if data.len() < idx + salt_len {
-        return Err(CryptError::Format("missing salt bytes".into()));
+    if salt_len != SALT_LEN {
+        return Err(CryptError::Format(format!(
+            "invalid salt length: expected {}, got {}",
+            SALT_LEN, salt_len
+        )));
     }
-    let salt = data[idx..idx + salt_len].to_vec();
-    idx += salt_len;
+    let salt_end = idx
+        .checked_add(salt_len)
+        .ok_or_else(|| CryptError::Format("salt length overflow".into()))?;
+    let salt = data
+        .get(idx..salt_end)
+        .ok_or_else(|| CryptError::Format("missing salt bytes".into()))?
+        .to_vec();
+    idx = salt_end;
 
     // 读取 nonce
-    if data.len() < idx + 1 {
-        return Err(CryptError::Format("missing nonce length".into()));
-    }
-    let nonce_len = data[idx] as usize;
+    let nonce_len =
+        *data.get(idx).ok_or_else(|| CryptError::Format("missing nonce length".into()))? as usize;
     idx += 1;
-    if data.len() < idx + nonce_len {
-        return Err(CryptError::Format("missing nonce bytes".into()));
+    if nonce_len != XNONCE_LEN {
+        return Err(CryptError::Format(format!(
+            "invalid nonce length: expected {}, got {}",
+            XNONCE_LEN, nonce_len
+        )));
     }
-    let nonce = data[idx..idx + nonce_len].to_vec();
-    idx += nonce_len;
+    let nonce_end = idx
+        .checked_add(nonce_len)
+        .ok_or_else(|| CryptError::Format("nonce length overflow".into()))?;
+    let nonce = data
+        .get(idx..nonce_end)
+        .ok_or_else(|| CryptError::Format("missing nonce bytes".into()))?
+        .to_vec();
+    idx = nonce_end;
 
     // 读取 AAD
-    if data.len() < idx + 2 {
-        return Err(CryptError::Format("missing AAD length".into()));
-    }
-    let aad_len = u16::from_be_bytes([data[idx], data[idx + 1]]) as usize;
-    idx += 2;
-    if data.len() < idx + aad_len {
-        return Err(CryptError::Format("missing AAD bytes".into()));
-    }
-    let aad = data[idx..idx + aad_len].to_vec();
-    idx += aad_len;
+    let aad_len_end = idx
+        .checked_add(2)
+        .ok_or_else(|| CryptError::Format("AAD length offset overflow".into()))?;
+    let aad_len_bytes = data
+        .get(idx..aad_len_end)
+        .ok_or_else(|| CryptError::Format("missing AAD length".into()))?;
+    let aad_len = u16::from_be_bytes([aad_len_bytes[0], aad_len_bytes[1]]) as usize;
+    idx = aad_len_end;
+    let aad_end =
+        idx.checked_add(aad_len).ok_or_else(|| CryptError::Format("AAD length overflow".into()))?;
+    let aad = data
+        .get(idx..aad_end)
+        .ok_or_else(|| CryptError::Format("missing AAD bytes".into()))?
+        .to_vec();
+    idx = aad_end;
 
     // 读取密文
-    if data.len() < idx + 8 {
-        return Err(CryptError::Format("missing ciphertext length".into()));
-    }
-    let ct_len = u64::from_be_bytes([
-        data[idx],
-        data[idx + 1],
-        data[idx + 2],
-        data[idx + 3],
-        data[idx + 4],
-        data[idx + 5],
-        data[idx + 6],
-        data[idx + 7],
-    ]) as usize;
-    idx += 8;
+    let ct_len_end = idx
+        .checked_add(8)
+        .ok_or_else(|| CryptError::Format("ciphertext length offset overflow".into()))?;
+    let ct_len_bytes = data
+        .get(idx..ct_len_end)
+        .ok_or_else(|| CryptError::Format("missing ciphertext length".into()))?;
+    let ct_len_u64 = u64::from_be_bytes([
+        ct_len_bytes[0],
+        ct_len_bytes[1],
+        ct_len_bytes[2],
+        ct_len_bytes[3],
+        ct_len_bytes[4],
+        ct_len_bytes[5],
+        ct_len_bytes[6],
+        ct_len_bytes[7],
+    ]);
+    let ct_len = usize::try_from(ct_len_u64)
+        .map_err(|_| CryptError::Format("ciphertext length overflow".into()))?;
+    idx = ct_len_end;
 
-    if data.len() < idx + ct_len {
-        return Err(CryptError::Format("missing ciphertext bytes".into()));
+    let ct_end = idx
+        .checked_add(ct_len)
+        .ok_or_else(|| CryptError::Format("ciphertext length overflow".into()))?;
+    let ct = data
+        .get(idx..ct_end)
+        .ok_or_else(|| CryptError::Format("missing ciphertext bytes".into()))?
+        .to_vec();
+    idx = ct_end;
+
+    if idx != data.len() {
+        return Err(CryptError::Format("unexpected trailing bytes in encrypted blob".into()));
     }
-    let ct = data[idx..idx + ct_len].to_vec();
 
     Ok(EncryptedBlob { mem_kib, t_cost, p_cost, salt, nonce, aad, ciphertext: ct })
 }
@@ -191,6 +248,13 @@ pub fn encrypt_with_aad(
     plaintext: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, CryptError> {
+    if nonce.len() != XNONCE_LEN {
+        return Err(CryptError::Crypto(format!(
+            "Invalid nonce length: expected {}, got {}",
+            XNONCE_LEN,
+            nonce.len()
+        )));
+    }
     let cipher = XChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key));
     let xnonce = XNonce::from_slice(nonce);
     cipher
@@ -205,6 +269,13 @@ pub fn decrypt_with_aad(
     ciphertext: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, CryptError> {
+    if nonce.len() != XNONCE_LEN {
+        return Err(CryptError::Crypto(format!(
+            "Invalid nonce length: expected {}, got {}",
+            XNONCE_LEN,
+            nonce.len()
+        )));
+    }
     let cipher = XChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key));
     let xnonce = XNonce::from_slice(nonce);
     cipher.decrypt(xnonce, chacha20poly1305::aead::Payload { msg: ciphertext, aad }).map_err(|_| {
@@ -247,7 +318,10 @@ pub fn pack_pubenc_blob(
     aad: &[u8],
     ciphertext: &[u8],
     signature: Option<&PubencSignature>,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, CryptError> {
+    let aad_len = u16::try_from(aad.len())
+        .map_err(|_| CryptError::Format("AAD length exceeds maximum of 65535 bytes".into()))?;
+
     let mut out = Vec::new();
     out.extend_from_slice(PUBENC_MAGIC);
 
@@ -262,14 +336,13 @@ pub fn pack_pubenc_blob(
     out.extend_from_slice(ephemeral_pub);
     out.extend_from_slice(nonce);
 
-    let aad_len = aad.len() as u16;
     out.extend_from_slice(&aad_len.to_be_bytes());
     out.extend_from_slice(aad);
 
     out.extend_from_slice(&(ciphertext.len() as u64).to_be_bytes());
     out.extend_from_slice(ciphertext);
 
-    out
+    Ok(out)
 }
 
 /// 解析 pubenc 格式的加密文件
@@ -277,85 +350,110 @@ pub fn unpack_pubenc_blob(data: &[u8]) -> Result<UnpackedPubenc, CryptError> {
     let mut idx = 0usize;
 
     // 检查 magic
-    if data.len() < PUBENC_MAGIC.len() {
-        return Err(CryptError::Format("pubenc blob too small".into()));
-    }
-    if &data[..PUBENC_MAGIC.len()] != PUBENC_MAGIC {
+    let magic_slice = data
+        .get(..PUBENC_MAGIC.len())
+        .ok_or_else(|| CryptError::Format("pubenc blob too small".into()))?;
+    if magic_slice != PUBENC_MAGIC {
         return Err(CryptError::Format("bad magic — not a valid pubenc file".into()));
     }
     idx += PUBENC_MAGIC.len();
 
     // 读取 flags
-    if data.len() < idx + 1 {
-        return Err(CryptError::Format("missing flags byte".into()));
-    }
-    let flags = data[idx];
+    let flags = *data.get(idx).ok_or_else(|| CryptError::Format("missing flags byte".into()))?;
     idx += 1;
+
+    if flags & !PUBENC_FLAG_HAS_SIGNATURE != 0 {
+        return Err(CryptError::Format(format!("unsupported pubenc flags: 0x{:02x}", flags)));
+    }
 
     // 读取可选的签名数据
     let signature = if flags & PUBENC_FLAG_HAS_SIGNATURE != 0 {
-        if data.len() < idx + 32 + 64 {
-            return Err(CryptError::Format("missing signature data".into()));
-        }
+        let sig_end = idx
+            .checked_add(32 + 64)
+            .ok_or_else(|| CryptError::Format("signature offset overflow".into()))?;
+        let sig_slice = data
+            .get(idx..sig_end)
+            .ok_or_else(|| CryptError::Format("missing signature data".into()))?;
         let mut vk = [0u8; 32];
-        vk.copy_from_slice(&data[idx..idx + 32]);
-        idx += 32;
+        vk.copy_from_slice(&sig_slice[..32]);
         let mut sig = [0u8; 64];
-        sig.copy_from_slice(&data[idx..idx + 64]);
-        idx += 64;
+        sig.copy_from_slice(&sig_slice[32..96]);
+        idx = sig_end;
         Some(PubencSignature { verifying_key: vk, signature: sig })
     } else {
         None
     };
 
     // 读取 ephemeral public key
-    if data.len() < idx + 32 {
-        return Err(CryptError::Format("missing ephemeral public key".into()));
-    }
+    let eph_end = idx
+        .checked_add(32)
+        .ok_or_else(|| CryptError::Format("ephemeral key offset overflow".into()))?;
+    let eph_slice = data
+        .get(idx..eph_end)
+        .ok_or_else(|| CryptError::Format("missing ephemeral public key".into()))?;
     let mut ephemeral_pub = [0u8; 32];
-    ephemeral_pub.copy_from_slice(&data[idx..idx + 32]);
-    idx += 32;
+    ephemeral_pub.copy_from_slice(eph_slice);
+    idx = eph_end;
 
     // 读取 nonce
-    if data.len() < idx + 24 {
-        return Err(CryptError::Format("missing nonce".into()));
-    }
+    let nonce_end =
+        idx.checked_add(24).ok_or_else(|| CryptError::Format("nonce offset overflow".into()))?;
+    let nonce_slice =
+        data.get(idx..nonce_end).ok_or_else(|| CryptError::Format("missing nonce".into()))?;
     let mut nonce = [0u8; 24];
-    nonce.copy_from_slice(&data[idx..idx + 24]);
-    idx += 24;
+    nonce.copy_from_slice(nonce_slice);
+    idx = nonce_end;
 
     // 读取 AAD
-    if data.len() < idx + 2 {
-        return Err(CryptError::Format("missing AAD length".into()));
-    }
-    let aad_len = u16::from_be_bytes([data[idx], data[idx + 1]]) as usize;
-    idx += 2;
-    if data.len() < idx + aad_len {
-        return Err(CryptError::Format("missing AAD bytes".into()));
-    }
-    let aad = data[idx..idx + aad_len].to_vec();
-    idx += aad_len;
+    let aad_len_end = idx
+        .checked_add(2)
+        .ok_or_else(|| CryptError::Format("AAD length offset overflow".into()))?;
+    let aad_len_bytes = data
+        .get(idx..aad_len_end)
+        .ok_or_else(|| CryptError::Format("missing AAD length".into()))?;
+    let aad_len = u16::from_be_bytes([aad_len_bytes[0], aad_len_bytes[1]]) as usize;
+    idx = aad_len_end;
+    let aad_end =
+        idx.checked_add(aad_len).ok_or_else(|| CryptError::Format("AAD length overflow".into()))?;
+    let aad = data
+        .get(idx..aad_end)
+        .ok_or_else(|| CryptError::Format("missing AAD bytes".into()))?
+        .to_vec();
+    idx = aad_end;
 
     // 读取密文
-    if data.len() < idx + 8 {
-        return Err(CryptError::Format("missing ciphertext length".into()));
-    }
-    let ct_len = u64::from_be_bytes([
-        data[idx],
-        data[idx + 1],
-        data[idx + 2],
-        data[idx + 3],
-        data[idx + 4],
-        data[idx + 5],
-        data[idx + 6],
-        data[idx + 7],
-    ]) as usize;
-    idx += 8;
+    let ct_len_end = idx
+        .checked_add(8)
+        .ok_or_else(|| CryptError::Format("ciphertext length offset overflow".into()))?;
+    let ct_len_bytes = data
+        .get(idx..ct_len_end)
+        .ok_or_else(|| CryptError::Format("missing ciphertext length".into()))?;
+    let ct_len_u64 = u64::from_be_bytes([
+        ct_len_bytes[0],
+        ct_len_bytes[1],
+        ct_len_bytes[2],
+        ct_len_bytes[3],
+        ct_len_bytes[4],
+        ct_len_bytes[5],
+        ct_len_bytes[6],
+        ct_len_bytes[7],
+    ]);
+    let ct_len = usize::try_from(ct_len_u64)
+        .map_err(|_| CryptError::Format("ciphertext length overflow".into()))?;
+    idx = ct_len_end;
 
-    if data.len() < idx + ct_len {
-        return Err(CryptError::Format("missing ciphertext bytes".into()));
+    let ct_end = idx
+        .checked_add(ct_len)
+        .ok_or_else(|| CryptError::Format("ciphertext length overflow".into()))?;
+    let ciphertext = data
+        .get(idx..ct_end)
+        .ok_or_else(|| CryptError::Format("missing ciphertext bytes".into()))?
+        .to_vec();
+    idx = ct_end;
+
+    if idx != data.len() {
+        return Err(CryptError::Format("unexpected trailing bytes in pubenc blob".into()));
     }
-    let ciphertext = data[idx..idx + ct_len].to_vec();
 
     Ok(UnpackedPubenc { ephemeral_pub, nonce, aad, ciphertext, signature })
 }
@@ -363,7 +461,6 @@ pub fn unpack_pubenc_blob(data: &[u8]) -> Result<UnpackedPubenc, CryptError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::*;
 
     // ── derive_key ─────────────────────────────────────
 
@@ -405,6 +502,18 @@ mod tests {
         assert!(derive_key("p", &[0u8; 16], 256, 1, MAX_ARGON_P_COST + 1).is_err());
     }
 
+    #[test]
+    fn derive_key_rejects_below_min_mem() {
+        let r = derive_key("p", &[0u8; 16], MIN_ARGON_M_COST_KIB - 1, 1, 1);
+        assert!(matches!(r, Err(CryptError::Key(_))));
+    }
+
+    #[test]
+    fn derive_key_rejects_invalid_salt_len() {
+        let r = derive_key("p", &[0u8; 15], 256, 1, 1);
+        assert!(matches!(r, Err(CryptError::Key(_))));
+    }
+
     // ── encrypted blob ─────────────────────────────────
 
     #[test]
@@ -414,7 +523,7 @@ mod tests {
         let aad = b"name=test|email=t@t.com";
         let ct = vec![3u8; 100];
 
-        let blob = pack_encrypted_blob(65536, 2, 1, &salt, &nonce, aad, &ct);
+        let blob = pack_encrypted_blob(65536, 2, 1, &salt, &nonce, aad, &ct).unwrap();
         let p = unpack_encrypted_blob(&blob).unwrap();
 
         assert_eq!(p.mem_kib, 65536);
@@ -442,6 +551,59 @@ mod tests {
         assert!(unpack_encrypted_blob(MAGIC).is_err());
     }
 
+    #[test]
+    fn encrypted_blob_rejects_invalid_nonce_len() {
+        // M-2(a): nonce_len = 23 must return Format error, not panic
+        let mut raw = Vec::new();
+        raw.extend_from_slice(MAGIC);
+        raw.extend_from_slice(&256u32.to_be_bytes());
+        raw.extend_from_slice(&1u32.to_be_bytes());
+        raw.extend_from_slice(&1u32.to_be_bytes());
+        raw.push(16);
+        raw.extend_from_slice(&[0u8; 16]);
+        raw.push(23);
+        raw.extend_from_slice(&[0u8; 23]);
+        raw.extend_from_slice(&0u16.to_be_bytes());
+        raw.extend_from_slice(&40u64.to_be_bytes());
+        raw.extend_from_slice(&[0u8; 40]);
+
+        assert!(matches!(unpack_encrypted_blob(&raw), Err(CryptError::Format(_))));
+    }
+
+    #[test]
+    fn encrypted_blob_rejects_overflow_ct_len() {
+        // M-2(b): ct_len = u64::MAX must return Format error, not wrap/panic
+        let mut raw = Vec::new();
+        raw.extend_from_slice(MAGIC);
+        raw.extend_from_slice(&256u32.to_be_bytes());
+        raw.extend_from_slice(&1u32.to_be_bytes());
+        raw.extend_from_slice(&1u32.to_be_bytes());
+        raw.push(16);
+        raw.extend_from_slice(&[0u8; 16]);
+        raw.push(24);
+        raw.extend_from_slice(&[0u8; 24]);
+        raw.extend_from_slice(&0u16.to_be_bytes());
+        raw.extend_from_slice(&u64::MAX.to_be_bytes());
+        raw.extend_from_slice(b"JUNK");
+
+        assert!(matches!(unpack_encrypted_blob(&raw), Err(CryptError::Format(_))));
+    }
+
+    #[test]
+    fn encrypted_blob_rejects_trailing_bytes() {
+        let mut blob =
+            pack_encrypted_blob(256, 1, 1, &[1u8; 16], &[2u8; 24], b"aad", &[3u8; 32]).unwrap();
+        blob.push(0xFF);
+        assert!(matches!(unpack_encrypted_blob(&blob), Err(CryptError::Format(_))));
+    }
+
+    #[test]
+    fn pack_encrypted_blob_rejects_oversized_aad() {
+        let big_aad = vec![b'A'; 65536];
+        let r = pack_encrypted_blob(256, 1, 1, &[1u8; 16], &[2u8; 24], &big_aad, &[3u8; 32]);
+        assert!(matches!(r, Err(CryptError::Format(_))));
+    }
+
     // ── pubenc blob ────────────────────────────────────
 
     #[test]
@@ -451,7 +613,7 @@ mod tests {
         let aad = b"file=test.txt";
         let ct = vec![0xCCu8; 200];
 
-        let blob = pack_pubenc_blob(&eph, &nonce, aad, &ct, None);
+        let blob = pack_pubenc_blob(&eph, &nonce, aad, &ct, None).unwrap();
         let p = unpack_pubenc_blob(&blob).unwrap();
         assert_eq!(p.ephemeral_pub, eph);
         assert_eq!(p.nonce, nonce);
@@ -465,7 +627,7 @@ mod tests {
         let nonce = [0xBBu8; 24];
         let sig = PubencSignature { verifying_key: [0xDDu8; 32], signature: [0xEEu8; 64] };
 
-        let blob = pack_pubenc_blob(&eph, &nonce, b"aad", &[0xCCu8; 50], Some(&sig));
+        let blob = pack_pubenc_blob(&eph, &nonce, b"aad", &[0xCCu8; 50], Some(&sig)).unwrap();
         let p = unpack_pubenc_blob(&blob).unwrap();
         let ps = p.signature.unwrap();
         assert_eq!(ps.verifying_key, [0xDDu8; 32]);
@@ -475,6 +637,44 @@ mod tests {
     #[test]
     fn pubenc_rejects_bad_magic() {
         assert!(matches!(unpack_pubenc_blob(b"WRONG"), Err(CryptError::Format(_))));
+    }
+
+    #[test]
+    fn pubenc_rejects_overflow_ct_len() {
+        // M-2(b): ct_len = u64::MAX must return Format error, not wrap/panic
+        let mut raw = Vec::new();
+        raw.extend_from_slice(PUBENC_MAGIC);
+        raw.push(0x00);
+        raw.extend_from_slice(&[0u8; 32]);
+        raw.extend_from_slice(&[0u8; 24]);
+        raw.extend_from_slice(&0u16.to_be_bytes());
+        raw.extend_from_slice(&u64::MAX.to_be_bytes());
+        raw.extend_from_slice(b"JUNK");
+
+        assert!(matches!(unpack_pubenc_blob(&raw), Err(CryptError::Format(_))));
+    }
+
+    #[test]
+    fn pubenc_rejects_unknown_flags() {
+        let mut blob =
+            pack_pubenc_blob(&[0xAAu8; 32], &[0xBBu8; 24], b"aad", &[1u8; 20], None).unwrap();
+        blob[PUBENC_MAGIC.len()] = 0x80; // unknown flag bit
+        assert!(matches!(unpack_pubenc_blob(&blob), Err(CryptError::Format(_))));
+    }
+
+    #[test]
+    fn pubenc_rejects_trailing_bytes() {
+        let mut blob =
+            pack_pubenc_blob(&[0xAAu8; 32], &[0xBBu8; 24], b"aad", &[1u8; 20], None).unwrap();
+        blob.push(0x00);
+        assert!(matches!(unpack_pubenc_blob(&blob), Err(CryptError::Format(_))));
+    }
+
+    #[test]
+    fn pack_pubenc_blob_rejects_oversized_aad() {
+        let big_aad = vec![b'B'; 65536];
+        let r = pack_pubenc_blob(&[0xAAu8; 32], &[0xBBu8; 24], &big_aad, &[1u8; 20], None);
+        assert!(matches!(r, Err(CryptError::Format(_))));
     }
 
     // ── encrypt / decrypt ──────────────────────────────
@@ -491,6 +691,12 @@ mod tests {
 
         let dec = decrypt_with_aad(&key, &nonce, &ct, aad).unwrap();
         assert_eq!(dec, pt.to_vec());
+    }
+
+    #[test]
+    fn decrypt_with_aad_rejects_invalid_nonce_len() {
+        let r = decrypt_with_aad(&[42u8; KEY_LEN], &[7u8; 23], &[0u8; 32], b"a");
+        assert!(matches!(r, Err(CryptError::Crypto(_))));
     }
 
     #[test]
@@ -546,7 +752,7 @@ mod tests {
 
         let key = derive_key(pw, &salt, 256, 1, 1).unwrap();
         let ct = encrypt_with_aad(&key, &nonce, pt, aad).unwrap();
-        let blob = pack_encrypted_blob(256, 1, 1, &salt, &nonce, aad, &ct);
+        let blob = pack_encrypted_blob(256, 1, 1, &salt, &nonce, aad, &ct).unwrap();
 
         let p = unpack_encrypted_blob(&blob).unwrap();
         let k2 = derive_key(pw, &p.salt, p.mem_kib, p.t_cost, p.p_cost).unwrap();
@@ -577,7 +783,7 @@ mod tests {
         OsRng.fill_bytes(&mut nonce);
         let ct = encrypt_with_aad(&sym, &nonce, pt, b"aad").unwrap();
 
-        let blob = pack_pubenc_blob(&eph_bytes, &nonce, b"aad", &ct, None);
+        let blob = pack_pubenc_blob(&eph_bytes, &nonce, b"aad", &ct, None).unwrap();
         let p = unpack_pubenc_blob(&blob).unwrap();
 
         let shared2 = recipient.diffie_hellman(&X25519PublicKey::from(p.ephemeral_pub));

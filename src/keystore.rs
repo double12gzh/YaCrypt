@@ -6,13 +6,14 @@ use crate::crypto::{
     decrypt_with_aad, derive_key, encrypt_with_aad, pack_encrypted_blob, unpack_encrypted_blob,
 };
 use crate::utils::{
-    compute_fingerprint, escape_aad_field, prompt_password_confirm, try_mlockall, write_file_strict,
+    compute_fingerprint, escape_aad_field, hash_metadata_field, parse_aad_map,
+    prompt_password_confirm, try_mlockall, write_file_strict, write_file_strict_with_options,
 };
 use base64::{engine::general_purpose, Engine as _};
 use chacha20poly1305::aead::OsRng;
 use dialoguer::{Confirm, Password};
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use pkcs8::EncodePrivateKey;
+use pkcs8::{DecodePrivateKey, EncodePrivateKey};
 use rand::RngCore;
 use std::{
     fs::{self, File},
@@ -21,7 +22,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// 密钥生成结果，持有生成的密钥和相关路径
 pub struct GeneratedKeys {
@@ -36,69 +37,48 @@ pub struct GeneratedKeys {
 /// 生成密钥对并安全存储到 keystore（共用逻辑）
 ///
 /// 生成 Ed25519 签名密钥对和 X25519 加密密钥对，
-/// 使用密码加密私钥并保存到 keystore 目录。
+/// 先在内存中完成全部 Argon2id 密钥派生与私钥加密，全部成功后再一次性写入 keystore 目录，
+/// 杜绝中途失败或崩溃留下孤儿公钥 (H-2)。
 pub fn generate_and_store_keys(
     name: &str,
     email: &str,
 ) -> Result<GeneratedKeys, Box<dyn std::error::Error>> {
     try_mlockall();
 
-    // generate ed25519 keypair using cryptographically secure RNG
-    let mut secret_bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut secret_bytes);
+    // 1. 在内存中生成 Ed25519 签名密钥对
+    let mut secret_bytes = Zeroizing::new([0u8; 32]);
+    OsRng.fill_bytes(&mut *secret_bytes);
     let signing_key = SigningKey::from_bytes(&secret_bytes);
-    secret_bytes.zeroize();
     let verifying_key: VerifyingKey = signing_key.verifying_key();
 
-    // Export PKCS#8 encoded private key (DER)
+    // Export PKCS#8 encoded private key (DER, SecretDocument drops with zeroize)
     let pkcs8_doc =
         signing_key.to_pkcs8_der().map_err(|e| format!("PKCS#8 encoding failed: {}", e))?;
     let pkcs8_der = pkcs8_doc.as_bytes();
 
-    // compute fingerprint on public key bytes
+    // compute fingerprint on Ed25519 public key bytes
     let pub_bytes = verifying_key.to_bytes();
     let fingerprint = compute_fingerprint(&pub_bytes);
 
-    // create keystore dir
-    let keystore = PathBuf::from("keystore");
-    fs::create_dir_all(&keystore)?;
-    fs::set_permissions(&keystore, fs::Permissions::from_mode(0o700))?;
-
-    // write Ed25519 public key (base64)
-    let pub_path = keystore.join(format!("public_{}.asc", fingerprint));
-    write_file_strict(&pub_path, general_purpose::STANDARD.encode(pub_bytes).as_bytes())?;
-
-    // Generate X25519 keypair for encryption (static key for long-term use)
+    // 2. 在内存中生成 X25519 加密密钥对
     let x25519_secret = StaticSecret::random_from_rng(OsRng);
     let x25519_public = X25519PublicKey::from(&x25519_secret);
     let x25519_public_bytes = x25519_public.to_bytes();
-    let mut x25519_secret_bytes = x25519_secret.to_bytes();
+    let x25519_secret_bytes = Zeroizing::new(x25519_secret.to_bytes());
 
-    // write X25519 public key (base64) - for encryption
-    let x25519_pub_path = keystore.join(format!("x25519_public_{}.asc", fingerprint));
-    write_file_strict(
-        &x25519_pub_path,
-        general_purpose::STANDARD.encode(x25519_public_bytes).as_bytes(),
-    )?;
-
-    // Prepare backup password
+    // 3. 获取或自动生成口令（注意：在 Argon2 派生和写盘成功前不提前打印自动口令，避免崩溃误导用户）
     let auto_backup_pass = Confirm::new()
         .with_prompt("Auto-generate backup encryption password?")
         .default(true)
         .interact()?;
 
-    let backup_pass = if auto_backup_pass {
-        let mut rnd = vec![0u8; 48];
+    let backup_pass: Zeroizing<String> = if auto_backup_pass {
+        let mut rnd = Zeroizing::new(vec![0u8; 48]);
         OsRng.fill_bytes(&mut rnd);
-        let s = general_purpose::URL_SAFE_NO_PAD.encode(&rnd);
-        rnd.zeroize();
-        println!("✅ Backup password generated:");
-        println!("   {}", s);
-        println!("   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.");
-        s
+        Zeroizing::new(general_purpose::URL_SAFE_NO_PAD.encode(&*rnd))
     } else {
         match prompt_password_confirm("Enter backup encryption password") {
-            Some(x) => x,
+            Some(x) => Zeroizing::new(x),
             None => return Err("Failed to read backup password".into()),
         }
     };
@@ -108,45 +88,33 @@ pub fn generate_and_store_keys(
     let t_cost = DEFAULT_ARGON_T_COST;
     let p_cost = DEFAULT_ARGON_P_COST;
 
-    // create salt and nonce for Ed25519 key
+    // 4. 在内存中派生密钥并加密两把私钥（使用身份元数据哈希绑定 AAD，避免明文泄漏姓名/邮箱 M-3）
+    let name_escaped = escape_aad_field(name);
+    let email_escaped = escape_aad_field(email);
+    let id_hash = hash_metadata_field(&format!("{}|{}", name_escaped, email_escaped));
+
     let mut salt = [0u8; SALT_LEN];
     OsRng.fill_bytes(&mut salt);
     let mut nonce = [0u8; XNONCE_LEN];
     OsRng.fill_bytes(&mut nonce);
 
-    // derive symmetric key from backup_pass + salt
-    let mut sym_key = derive_key(&backup_pass, &salt, mem_kib, t_cost, p_cost)?;
-
-    // 转义特殊字符防止注入，确保 AAD 格式正确
-    let name_escaped = escape_aad_field(name);
-    let email_escaped = escape_aad_field(email);
-    let aad_str = format!("name={}|email={}|fp={}", name_escaped, email_escaped, fingerprint);
+    let sym_key = Zeroizing::new(derive_key(&backup_pass, &salt, mem_kib, t_cost, p_cost)?);
+    let aad_str = format!("id_sha256={}|fp={}|type=ed25519", id_hash, fingerprint);
     let aad_bytes = aad_str.as_bytes();
-
-    // encrypt Ed25519 PKCS8 DER with XChaCha20Poly1305
     let ciphertext = encrypt_with_aad(&sym_key, &nonce, pkcs8_der, aad_bytes)?;
+    let blob = pack_encrypted_blob(mem_kib, t_cost, p_cost, &salt, &nonce, aad_bytes, &ciphertext)?;
 
-    // pack blob (now includes AAD)
-    let blob = pack_encrypted_blob(mem_kib, t_cost, p_cost, &salt, &nonce, aad_bytes, &ciphertext);
-
-    // write encrypted Ed25519 private key
-    let enc_path = keystore.join(format!("private_{}.asc.enc", fingerprint));
-    write_file_strict(&enc_path, &blob)?;
-
-    // encrypt X25519 private key with the same password
     let mut x25519_salt = [0u8; SALT_LEN];
     OsRng.fill_bytes(&mut x25519_salt);
     let mut x25519_nonce = [0u8; XNONCE_LEN];
     OsRng.fill_bytes(&mut x25519_nonce);
 
-    let mut x25519_sym_key = derive_key(&backup_pass, &x25519_salt, mem_kib, t_cost, p_cost)?;
-    let x25519_aad_str =
-        format!("name={}|email={}|fp={}|type=x25519", name_escaped, email_escaped, fingerprint);
+    let x25519_sym_key =
+        Zeroizing::new(derive_key(&backup_pass, &x25519_salt, mem_kib, t_cost, p_cost)?);
+    let x25519_aad_str = format!("id_sha256={}|fp={}|type=x25519", id_hash, fingerprint);
     let x25519_aad_bytes = x25519_aad_str.as_bytes();
-
     let x25519_ciphertext =
-        encrypt_with_aad(&x25519_sym_key, &x25519_nonce, &x25519_secret_bytes, x25519_aad_bytes)?;
-
+        encrypt_with_aad(&x25519_sym_key, &x25519_nonce, &*x25519_secret_bytes, x25519_aad_bytes)?;
     let x25519_blob = pack_encrypted_blob(
         mem_kib,
         t_cost,
@@ -155,17 +123,19 @@ pub fn generate_and_store_keys(
         &x25519_nonce,
         x25519_aad_bytes,
         &x25519_ciphertext,
-    );
+    )?;
 
-    // write encrypted X25519 private key
+    // 5. 全部密码学运算成功后，一次性落盘写入 keystore（若任一文件写入失败则回滚清理）
+    let keystore = PathBuf::from("keystore");
+    fs::create_dir_all(&keystore)?;
+    fs::set_permissions(&keystore, fs::Permissions::from_mode(0o700))?;
+
+    let pub_path = keystore.join(format!("public_{}.asc", fingerprint));
+    let x25519_pub_path = keystore.join(format!("x25519_public_{}.asc", fingerprint));
+    let enc_path = keystore.join(format!("private_{}.asc.enc", fingerprint));
     let x25519_enc_path = keystore.join(format!("x25519_private_{}.asc.enc", fingerprint));
-    write_file_strict(&x25519_enc_path, &x25519_blob)?;
-
-    x25519_sym_key.zeroize();
-    x25519_secret_bytes.zeroize();
-
-    // write recovery instructions (do NOT show passphrase in clear)
     let instr_path = keystore.join(format!("recovery_instructions_{}.txt", fingerprint));
+
     let instr = format!(
         "Recovery Instructions\n\
         ====================\n\n\
@@ -191,12 +161,31 @@ pub fn generate_and_store_keys(
         x25519_enc = x25519_enc_path.display(),
         ed_enc = enc_path.display(),
     );
-    write_file_strict(&instr_path, instr.as_bytes())?;
 
-    // zeroize sensitive material
-    sym_key.zeroize();
-    let mut bp = backup_pass.into_bytes();
-    bp.zeroize();
+    let write_all_files = || -> std::io::Result<()> {
+        write_file_strict(&pub_path, general_purpose::STANDARD.encode(pub_bytes).as_bytes())?;
+        write_file_strict(
+            &x25519_pub_path,
+            general_purpose::STANDARD.encode(x25519_public_bytes).as_bytes(),
+        )?;
+        write_file_strict(&enc_path, &blob)?;
+        write_file_strict(&x25519_enc_path, &x25519_blob)?;
+        write_file_strict(&instr_path, instr.as_bytes())?;
+        Ok(())
+    };
+
+    if let Err(e) = write_all_files() {
+        for p in [&pub_path, &x25519_pub_path, &enc_path, &x25519_enc_path, &instr_path] {
+            let _ = fs::remove_file(p);
+        }
+        return Err(e.into());
+    }
+
+    if auto_backup_pass {
+        println!("✅ Backup password generated:");
+        println!("   {}", backup_pass.as_str());
+        println!("   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.");
+    }
 
     Ok(GeneratedKeys {
         fingerprint,
@@ -206,6 +195,48 @@ pub fn generate_and_store_keys(
         enc_path,
         pub_path,
     })
+}
+
+/// 从加密的 Ed25519 私钥备份文件加载 SigningKey（用于复用已有密钥签名）
+pub fn load_signing_key_from_backup(
+    enc_path: &Path,
+) -> Result<SigningKey, Box<dyn std::error::Error>> {
+    if !enc_path.exists() {
+        return Err(format!("Signing key file not found: {}", enc_path.display()).into());
+    }
+
+    let pass = Zeroizing::new(
+        Password::new().with_prompt("Enter signing private key password").interact()?,
+    );
+
+    let mut f = File::open(enc_path)?;
+    let mut data = Vec::new();
+    f.read_to_end(&mut data)?;
+
+    let blob = unpack_encrypted_blob(&data)
+        .map_err(|s| format!("Invalid signing key blob format: {}", s))?;
+
+    let aad_map =
+        parse_aad_map(&blob.aad).map_err(|s| format!("Invalid signing key AAD: {}", s))?;
+    if let Some(t) = aad_map.get("type") {
+        if t != "ed25519" {
+            return Err(format!(
+                "Expected Ed25519 signing key (private_<FP>.asc.enc), got key type '{}'",
+                t
+            )
+            .into());
+        }
+    }
+
+    let key =
+        Zeroizing::new(derive_key(&pass, &blob.salt, blob.mem_kib, blob.t_cost, blob.p_cost)?);
+    let plaintext =
+        Zeroizing::new(decrypt_with_aad(&key, &blob.nonce, &blob.ciphertext, &blob.aad)?);
+
+    let signing_key = SigningKey::from_pkcs8_der(&plaintext)
+        .map_err(|e| format!("Invalid Ed25519 PKCS#8 DER private key: {}", e))?;
+
+    Ok(signing_key)
 }
 
 /// 生成受保护的 Ed25519 密钥对并创建加密备份（CLI 入口）
@@ -228,10 +259,11 @@ pub fn cmd_generate_protected_key(
     Ok(())
 }
 
-/// 解密备份文件并输出私钥
+/// 解密备份文件并输出 Ed25519 PKCS#8 DER 私钥
 pub fn cmd_decrypt_backup(
     enc_path: &Path,
     out: Option<&Path>,
+    force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 验证输入文件存在
     if !enc_path.exists() {
@@ -239,7 +271,7 @@ pub fn cmd_decrypt_backup(
     }
 
     // 读取密码
-    let pass = Password::new().with_prompt("Enter backup password").interact()?;
+    let pass = Zeroizing::new(Password::new().with_prompt("Enter backup password").interact()?);
 
     // 读取加密文件
     let mut f = File::open(enc_path)?;
@@ -249,11 +281,31 @@ pub fn cmd_decrypt_backup(
     // 解析 blob
     let blob = unpack_encrypted_blob(&data).map_err(|s| format!("Invalid blob format: {}", s))?;
 
-    // 派生密钥
-    let mut key = derive_key(&pass, &blob.salt, blob.mem_kib, blob.t_cost, blob.p_cost)?;
+    // 校验密钥类型标记，防止误将 X25519 原始私钥导出为 .der (L-5)
+    let aad_map = parse_aad_map(&blob.aad).map_err(|s| format!("Invalid blob AAD: {}", s))?;
+    if let Some(key_type) = aad_map.get("type") {
+        if key_type != "ed25519" {
+            return Err(format!(
+                "Cannot export '{}' key as PKCS#8 DER — please provide Ed25519 backup (private_<FP>.asc.enc)",
+                key_type
+            )
+            .into());
+        }
+    }
 
-    // 解密（使用 AAD 验证完整性）
-    let plaintext = decrypt_with_aad(&key, &blob.nonce, &blob.ciphertext, &blob.aad)?;
+    // 派生密钥
+    let key =
+        Zeroizing::new(derive_key(&pass, &blob.salt, blob.mem_kib, blob.t_cost, blob.p_cost)?);
+
+    // 解密（使用 AAD 验证完整性，使用 Zeroizing 确保明文私钥用后清零 L-3）
+    let mut plaintext =
+        Zeroizing::new(decrypt_with_aad(&key, &blob.nonce, &blob.ciphertext, &blob.aad)?);
+
+    // 进一步验证导出内容是合法的 Ed25519 PKCS#8 DER (L-5)
+    if SigningKey::from_pkcs8_der(&plaintext).is_err() {
+        plaintext.zeroize();
+        return Err("Decrypted payload is not a valid Ed25519 PKCS#8 DER private key".into());
+    }
 
     // 确定输出路径
     let out_path = match out {
@@ -265,12 +317,8 @@ pub fn cmd_decrypt_backup(
     };
 
     // 写入解密后的私钥
-    write_file_strict(&out_path, &plaintext)?;
-
-    // 清理敏感数据
-    key.zeroize();
-    let mut pbytes = pass.into_bytes();
-    pbytes.zeroize();
+    write_file_strict_with_options(&out_path, &plaintext, force)?;
+    plaintext.zeroize();
 
     println!("✅ Decrypted private key written to: {}", out_path.display());
     Ok(())

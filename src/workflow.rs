@@ -1,20 +1,24 @@
 /// 工作流模块
-use crate::crypto::{derive_symmetric_key_from_shared_secret, unpack_pubenc_blob};
+use crate::crypto::{derive_symmetric_key_from_shared_secret, unpack_pubenc_blob, UnpackedPubenc};
 use crate::file_ops::cmd_encrypt_file_with_key;
-use crate::keystore::generate_and_store_keys;
+use crate::keystore::{generate_and_store_keys, load_signing_key_from_backup};
+use crate::utils::{compute_fingerprint, parse_aad_map, write_file_strict_with_options};
+use base64::{engine::general_purpose, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use std::{io::Read, path::Path};
+use std::{fs::File, io::Read, path::Path};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// 完整的加密流程：生成密钥对 -> 加密密钥 -> 签名并加密文件
-/// 如果提供了 existing_key，则跳过密钥生成，直接使用已有公钥加密（不签名）
+/// 如果提供了 existing_key，则跳过密钥生成，直接使用已有公钥加密（可选通过 sign_key 签名）
 pub fn cmd_encrypt_workflow(
     input: &Path,
     name: &str,
     email: &str,
     output: Option<&Path>,
     existing_key: Option<&Path>,
+    sign_key: Option<&Path>,
+    force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 验证输入文件存在
     if !input.exists() {
@@ -22,12 +26,17 @@ pub fn cmd_encrypt_workflow(
     }
 
     if let Some(key_path) = existing_key {
-        // P2-12: 复用已有密钥，跳过密钥生成
+        // 复用已有密钥，跳过密钥生成
         if !key_path.exists() {
             return Err(format!("Public key file not found: {}", key_path.display()).into());
         }
+        let loaded_sk = match sign_key {
+            Some(sk_path) => Some(load_signing_key_from_backup(sk_path)?),
+            None => None,
+        };
+
         println!("🔐 Encrypting file with existing key: {}", key_path.display());
-        cmd_encrypt_file_with_key(input, key_path, output, None)?;
+        cmd_encrypt_file_with_key(input, key_path, output, loaded_sk.as_ref(), force)?;
 
         let out_path = match output {
             Some(p) => p.to_path_buf(),
@@ -36,6 +45,13 @@ pub fn cmd_encrypt_workflow(
                 p.set_extension("pubenc");
                 p
             }
+        };
+
+        let sig_note = if let Some(ref sk) = loaded_sk {
+            let fp = compute_fingerprint(&sk.verifying_key().to_bytes());
+            format!("Signed with key fingerprint: {}\n", fp)
+        } else {
+            "Note: This file was encrypted without a signature.\n".to_string()
         };
 
         // 生成解密说明文件
@@ -48,9 +64,10 @@ pub fn cmd_encrypt_workflow(
               yacrypt decrypt {enc} \\\n\
                   --private-key <corresponding x25519_private_*.asc.enc>\n\n\
             You will be prompted for the encryption password.\n\n\
-            Note: This file was encrypted without a signature.\n",
+            {sig_note}",
             enc = out_path.display(),
             key = key_path.display(),
+            sig_note = sig_note,
         );
         let instr_path = {
             let mut p = out_path.clone();
@@ -59,9 +76,13 @@ pub fn cmd_encrypt_workflow(
             p.set_extension(new_ext);
             p
         };
-        crate::utils::write_file_strict(&instr_path, decrypt_instructions.as_bytes())?;
+        write_file_strict_with_options(&instr_path, decrypt_instructions.as_bytes(), force)?;
 
-        println!("✅ File encrypted (no signature — use full workflow for signed encryption)");
+        if loaded_sk.is_some() {
+            println!("✅ File signed and encrypted with existing key");
+        } else {
+            println!("✅ File encrypted (no signature — use full workflow or --sign-key for signed encryption)");
+        }
         println!();
         println!("📋 To decrypt, you need the corresponding encrypted private key:");
         println!(
@@ -78,7 +99,13 @@ pub fn cmd_encrypt_workflow(
         println!("✅ Keys generated and encrypted. Fingerprint: {}", keys.fingerprint);
         println!("🔐 Step 2/2: Signing and encrypting file...");
 
-        cmd_encrypt_file_with_key(input, &keys.x25519_pub_path, output, Some(&keys.signing_key))?;
+        cmd_encrypt_file_with_key(
+            input,
+            &keys.x25519_pub_path,
+            output,
+            Some(&keys.signing_key),
+            force,
+        )?;
 
         let out_path = match output {
             Some(p) => p.to_path_buf(),
@@ -116,7 +143,7 @@ pub fn cmd_encrypt_workflow(
             p.set_extension(new_ext);
             p
         };
-        crate::utils::write_file_strict(&instr_path, decrypt_instructions.as_bytes())?;
+        write_file_strict_with_options(&instr_path, decrypt_instructions.as_bytes(), force)?;
 
         println!("✅ Complete encryption workflow finished!");
         println!();
@@ -137,11 +164,134 @@ pub fn cmd_encrypt_workflow(
     Ok(())
 }
 
-/// 完整的解密流程：解密密钥 -> 解密文件 -> 验证签名
+/// 解析用户传入的 `--signer` 参数（支持 64 位十六进制指纹或 Ed25519 公钥 `.asc` 文件路径）
+pub fn resolve_signer_fingerprint(signer_arg: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let as_path = Path::new(signer_arg);
+    if as_path.exists() {
+        let mut f = File::open(as_path)?;
+        let mut content = String::new();
+        f.read_to_string(&mut content)?;
+        let bytes = general_purpose::STANDARD
+            .decode(content.trim())
+            .map_err(|e| format!("Failed to decode signer public key file: {}", e))?;
+        let key_bytes: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| "Invalid Ed25519 public key length (expected 32 bytes)")?;
+        let vk = VerifyingKey::from_bytes(&key_bytes)
+            .map_err(|e| format!("Invalid Ed25519 public key: {}", e))?;
+        return Ok(compute_fingerprint(&vk.to_bytes()));
+    }
+
+    let trimmed = signer_arg.trim();
+    if trimmed.len() == 64 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Ok(trimmed.to_uppercase());
+    }
+
+    Err(format!(
+        "Invalid --signer value '{}': must be a 64-character hex fingerprint or a path to an Ed25519 public key file",
+        signer_arg
+    )
+    .into())
+}
+
+/// 校验 `.pubenc` 的 AAD 与头部字段一致性（防签名剥离 M-1），并在写盘前验证 Ed25519 签名与信任锚指纹（H-1）。
+/// 返回验证通过的签名者指纹 `Some(fp)`，若文件无签名且允许跳过则返回 `None`。
+pub(crate) fn verify_pubenc_aad_and_signature(
+    pubenc: &UnpackedPubenc,
+    plaintext: &[u8],
+    trusted_fp: Option<&str>,
+    require_signature: bool,
+) -> Result<Option<String>, String> {
+    let aad_map =
+        parse_aad_map(&pubenc.aad).map_err(|e| format!("Invalid pubenc AAD format: {}", e))?;
+
+    // 1. 强制校验 AAD 中的 ephemeral_pub 与二进制头一致
+    let expected_eph_hex = hex::encode(pubenc.ephemeral_pub);
+    match aad_map.get("ephemeral_pub") {
+        Some(eph) if eph.eq_ignore_ascii_case(&expected_eph_hex) => {}
+        _ => {
+            return Err(
+                "❌ Header integrity check FAILED — AAD ephemeral_pub mismatch. Decrypted content NOT written to disk."
+                    .into(),
+            );
+        }
+    }
+
+    // 2. 校验签名存在性与 AAD (sig_vk / flags) 一致性，彻底阻断签名剥离降级攻击 (M-1)
+    if let Some(ref sig_data) = pubenc.signature {
+        if let Some(fl) = aad_map.get("flags") {
+            if fl != "01" {
+                return Err(
+                    "❌ Header integrity check FAILED — AAD flags mismatch for signed file. Decrypted content NOT written to disk."
+                        .into(),
+                );
+            }
+        }
+        let expected_vk_hex = hex::encode(sig_data.verifying_key);
+        match aad_map.get("sig_vk") {
+            Some(vk_hex) if vk_hex.eq_ignore_ascii_case(&expected_vk_hex) => {}
+            _ => {
+                return Err(
+                    "❌ Header integrity check FAILED — AAD sig_vk missing or mismatched. Decrypted content NOT written to disk."
+                        .into(),
+                );
+            }
+        }
+
+        // 3. 验证 Ed25519 签名本身
+        let verifying_key = VerifyingKey::from_bytes(&sig_data.verifying_key)
+            .map_err(|e| format!("Invalid Ed25519 verifying key in file: {}", e))?;
+        let signature = Signature::from_bytes(&sig_data.signature);
+        if verifying_key.verify(plaintext, &signature).is_err() {
+            return Err(
+                "❌ Signature verification FAILED — file may have been tampered with. Decrypted content NOT written to disk."
+                    .into(),
+            );
+        }
+
+        // 4. 验证签名公钥信任锚指纹 (H-1)
+        let actual_fp = compute_fingerprint(&sig_data.verifying_key);
+        match trusted_fp {
+            Some(expected_fp) if actual_fp.eq_ignore_ascii_case(expected_fp) => Ok(Some(actual_fp)),
+            Some(expected_fp) => Err(format!(
+                "❌ Signature verification FAILED — untrusted signer fingerprint {} (expected {}). Decrypted content NOT written to disk.",
+                actual_fp,
+                expected_fp.to_uppercase()
+            )),
+            None => Err(format!(
+                "❌ Signature verification FAILED — no trusted signer anchor available for signer {}. Specify --signer <fingerprint>. Decrypted content NOT written to disk.",
+                actual_fp
+            )),
+        }
+    } else {
+        // 文件头部 flags 显示无签名：若 AAD 中存在 sig_vk 或 flags=01，说明签名块被剥离！(M-1)
+        if aad_map.contains_key("sig_vk") || aad_map.get("flags").map(String::as_str) == Some("01")
+        {
+            return Err(
+                "❌ Signature stripped — AAD indicates file was signed, but signature block is missing! Decrypted content NOT written to disk."
+                    .into(),
+            );
+        }
+
+        if require_signature {
+            return Err(
+                "❌ Signature verification FAILED — file has no embedded signature, but signature verification was required. Decrypted content NOT written to disk."
+                    .into(),
+            );
+        }
+
+        Ok(None)
+    }
+}
+
+/// 完整的解密流程：解密密钥 -> 解密文件 -> 验证签名与信任锚
 pub fn cmd_decrypt_workflow(
     input: &Path,
     private_key_path: &Path,
     output: Option<&Path>,
+    signer: Option<&str>,
+    require_signature: bool,
+    force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // 验证输入文件存在
     if !input.exists() {
@@ -151,50 +301,73 @@ pub fn cmd_decrypt_workflow(
         return Err(format!("Private key file not found: {}", private_key_path.display()).into());
     }
 
+    let explicit_signer_fp = match signer {
+        Some(s) => Some(resolve_signer_fingerprint(s)?),
+        None => None,
+    };
+
     println!("🔓 Step 1/2: Decrypting private key...");
 
-    // 读取密码
-    let pass = dialoguer::Password::new().with_prompt("Enter private key password").interact()?;
+    // 读取密码（使用 Zeroizing 确保提前返回时也自动擦除 L-3）
+    let pass = Zeroizing::new(
+        dialoguer::Password::new().with_prompt("Enter private key password").interact()?,
+    );
 
     // 读取加密的私钥文件
-    let mut key_file = std::fs::File::open(private_key_path)?;
+    let mut key_file = File::open(private_key_path)?;
     let mut key_data = Vec::new();
     key_file.read_to_end(&mut key_data)?;
 
-    // 解析私钥 blob（P1-7: 使用 EncryptedBlob 结构体）
+    // 解析私钥 blob
     let blob = crate::crypto::unpack_encrypted_blob(&key_data)
         .map_err(|s| format!("Invalid private key blob format: {}", s))?;
 
+    // 解析私钥 AAD，校验密钥类型 (L-5) 并提取配对的 Ed25519 身份指纹作为默认信任锚 (H-1)
+    let key_aad_map =
+        parse_aad_map(&blob.aad).map_err(|s| format!("Invalid private key AAD: {}", s))?;
+    if key_aad_map.get("type").map(String::as_str) != Some("x25519") {
+        return Err(
+            "Invalid private key type: expected X25519 encryption key (x25519_private_<FP>.asc.enc)"
+                .into(),
+        );
+    }
+    let key_owner_fp = key_aad_map.get("fp").cloned();
+
     // 派生密钥
-    let mut key =
-        crate::crypto::derive_key(&pass, &blob.salt, blob.mem_kib, blob.t_cost, blob.p_cost)?;
+    let key = Zeroizing::new(crate::crypto::derive_key(
+        &pass,
+        &blob.salt,
+        blob.mem_kib,
+        blob.t_cost,
+        blob.p_cost,
+    )?);
 
     // 解密 X25519 私钥
-    let mut x25519_secret_bytes =
-        crate::crypto::decrypt_with_aad(&key, &blob.nonce, &blob.ciphertext, &blob.aad)?;
+    let x25519_secret_bytes = Zeroizing::new(crate::crypto::decrypt_with_aad(
+        &key,
+        &blob.nonce,
+        &blob.ciphertext,
+        &blob.aad,
+    )?);
 
     if x25519_secret_bytes.len() != 32 {
-        x25519_secret_bytes.zeroize();
         return Err("Invalid X25519 private key length".into());
     }
 
     // 从字节重建 X25519 私钥（立即清零所有中间数据）
     let mut x25519_secret_bytes_array: [u8; 32] =
         x25519_secret_bytes.as_slice().try_into().unwrap();
-    x25519_secret_bytes.zeroize();
     let static_secret = StaticSecret::from(x25519_secret_bytes_array);
     x25519_secret_bytes_array.zeroize();
-
-    // 清理密钥相关数据
-    key.zeroize();
-    let mut pbytes = pass.into_bytes();
-    pbytes.zeroize();
+    drop(x25519_secret_bytes);
+    drop(key);
+    drop(pass);
 
     println!("✅ Private key decrypted");
     println!("🔓 Step 2/2: Decrypting and verifying file...");
 
     // 读取加密的文件
-    let mut f = std::fs::File::open(input)?;
+    let mut f = File::open(input)?;
     let mut enc_blob = Vec::new();
     f.read_to_end(&mut enc_blob)?;
 
@@ -205,43 +378,53 @@ pub fn cmd_decrypt_workflow(
     // 将临时公钥转换为 X25519 PublicKey
     let ephemeral_public = X25519PublicKey::from(pubenc.ephemeral_pub);
 
-    // 执行密钥交换
+    // 执行密钥交换并拒绝低阶点/全零共享密钥 (L-1)
     let shared_secret = static_secret.diffie_hellman(&ephemeral_public);
-    let mut shared_secret_bytes = *shared_secret.as_bytes();
+    if !shared_secret.was_contributory() {
+        return Err(
+            "Invalid ephemeral X25519 public key in file (non-contributory / low-order point)"
+                .into(),
+        );
+    }
+    let shared_secret_bytes = Zeroizing::new(*shared_secret.as_bytes());
 
     // 使用 HKDF 从共享密钥派生解密密钥（符合 RFC 5869）
-    let mut sym_key_array = derive_symmetric_key_from_shared_secret(
+    let sym_key_array = Zeroizing::new(derive_symmetric_key_from_shared_secret(
         &shared_secret_bytes,
         &pubenc.ephemeral_pub,
         b"yacrypt-file-encryption-v1",
-    );
+    ));
 
     // 解密
-    let mut plaintext = crate::crypto::decrypt_with_aad(
+    let mut plaintext = Zeroizing::new(crate::crypto::decrypt_with_aad(
         &sym_key_array,
         &pubenc.nonce,
         &pubenc.ciphertext,
         &pubenc.aad,
-    )?;
+    )?);
 
-    // 立即清理对称密钥
-    shared_secret_bytes.zeroize();
-    sym_key_array.zeroize();
+    drop(shared_secret_bytes);
+    drop(sym_key_array);
 
-    // 验证签名（必须在写入文件之前，失败则拒绝输出）
-    if let Some(ref sig_data) = pubenc.signature {
-        let verifying_key = VerifyingKey::from_bytes(&sig_data.verifying_key)
-            .map_err(|e| format!("Invalid Ed25519 verifying key in file: {}", e))?;
-        let signature = Signature::from_bytes(&sig_data.signature);
-        if verifying_key.verify(&plaintext, &signature).is_err() {
-            plaintext.zeroize();
-            return Err("❌ Signature verification FAILED — file may have been tampered with. \
-                 Decrypted content NOT written to disk."
-                .into());
+    // 确定信任锚指纹：优先使用用户显式指定的 --signer，否则使用私钥 AAD 中绑定的密钥对指纹
+    let trusted_fp = explicit_signer_fp.as_deref().or(key_owner_fp.as_deref());
+    let must_have_sig = require_signature || explicit_signer_fp.is_some();
+
+    // 验证 AAD 一致性与 Ed25519 签名（必须在写入文件之前，失败则拒绝输出）
+    match verify_pubenc_aad_and_signature(&pubenc, &plaintext, trusted_fp, must_have_sig) {
+        Ok(Some(verified_fp)) => {
+            println!(
+                "✅ File signature verified successfully (signer fingerprint: {})",
+                verified_fp
+            );
         }
-        println!("✅ File signature verified successfully");
-    } else {
-        println!("ℹ️  No signature embedded in encrypted file, skipping verification");
+        Ok(None) => {
+            println!("ℹ️  No signature embedded in encrypted file, skipping verification");
+        }
+        Err(err_msg) => {
+            plaintext.zeroize();
+            return Err(err_msg.into());
+        }
     }
 
     // 确定输出路径
@@ -265,13 +448,100 @@ pub fn cmd_decrypt_workflow(
     };
 
     // 写入解密后的文件（仅在签名验证通过后）
-    crate::utils::write_file_strict(&out_path, &plaintext)?;
-
-    // 清理明文
+    write_file_strict_with_options(&out_path, &plaintext, force)?;
     plaintext.zeroize();
 
     println!("✅ Complete decryption workflow finished!");
     println!("   - Decrypted file: {}", out_path.display());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::PubencSignature;
+    use ed25519_dalek::{Signer, SigningKey};
+
+    #[test]
+    fn verify_rejects_forged_signer_fingerprint_h1() {
+        let eph = [0x11u8; 32];
+        let nonce = [0x22u8; 24];
+        let payload = b"FORGED CONTENT";
+
+        // 攻击者自己的 Ed25519 密钥对
+        let attacker_sk = SigningKey::from_bytes(&[0x99u8; 32]);
+        let attacker_vk = attacker_sk.verifying_key().to_bytes();
+        let sig = attacker_sk.sign(payload).to_bytes();
+
+        let aad = format!(
+            "file_sha256=deadbeef|flags=01|ephemeral_pub={}|sig_vk={}",
+            hex::encode(eph),
+            hex::encode(attacker_vk)
+        );
+        let pubenc = UnpackedPubenc {
+            ephemeral_pub: eph,
+            nonce,
+            aad: aad.into_bytes(),
+            ciphertext: vec![],
+            signature: Some(PubencSignature { verifying_key: attacker_vk, signature: sig }),
+        };
+
+        // 受害者真实指纹与攻击者不同 -> 必须拒绝！(H-1)
+        let victim_fp = "A".repeat(64);
+        let res = verify_pubenc_aad_and_signature(&pubenc, payload, Some(&victim_fp), false);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("untrusted signer fingerprint"));
+
+        // 当预期指纹匹配真实签名者时 -> 通过！
+        let attacker_fp = compute_fingerprint(&attacker_vk);
+        let ok_res =
+            verify_pubenc_aad_and_signature(&pubenc, payload, Some(&attacker_fp), true).unwrap();
+        assert_eq!(ok_res, Some(attacker_fp));
+    }
+
+    #[test]
+    fn verify_rejects_stripped_signature_m1() {
+        let eph = [0x11u8; 32];
+        let nonce = [0x22u8; 24];
+        let payload = b"secret document";
+        let vk = [0x33u8; 32];
+
+        // 模拟 poc_strip.py：AAD 中仍带有 sig_vk，但 signature 已被剥离为 None
+        let aad =
+            format!("file=f2.txt|ephemeral_pub={}|sig_vk={}", hex::encode(eph), hex::encode(vk));
+        let stripped_pubenc = UnpackedPubenc {
+            ephemeral_pub: eph,
+            nonce,
+            aad: aad.into_bytes(),
+            ciphertext: vec![],
+            signature: None,
+        };
+
+        let res = verify_pubenc_aad_and_signature(&stripped_pubenc, payload, None, false);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("Signature stripped"));
+    }
+
+    #[test]
+    fn verify_rejects_unsigned_when_signature_required() {
+        let eph = [0x11u8; 32];
+        let nonce = [0x22u8; 24];
+        let aad = format!("file_sha256=deadbeef|flags=00|ephemeral_pub={}", hex::encode(eph));
+        let unsigned_pubenc = UnpackedPubenc {
+            ephemeral_pub: eph,
+            nonce,
+            aad: aad.into_bytes(),
+            ciphertext: vec![],
+            signature: None,
+        };
+
+        // 不要求签名时允许通过
+        assert_eq!(
+            verify_pubenc_aad_and_signature(&unsigned_pubenc, b"msg", None, false).unwrap(),
+            None
+        );
+        // 要求签名时必须拒绝
+        assert!(verify_pubenc_aad_and_signature(&unsigned_pubenc, b"msg", None, true).is_err());
+    }
 }
