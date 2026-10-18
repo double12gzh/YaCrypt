@@ -181,8 +181,10 @@ pub fn cmd_generate_protected_key(
     email: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let user_pass = prompt_backup_password_choice()?;
-    let keys =
-        generate_and_store_keys_in_dir(Path::new("keystore"), user_pass.as_deref().map(|s| s.as_str()))?;
+    let keys = generate_and_store_keys_in_dir(
+        Path::new("keystore"),
+        user_pass.as_deref().map(|s| s.as_str()),
+    )?;
     print_generated_keys_notice(&keys, name, email);
 
     println!(
@@ -234,8 +236,7 @@ pub fn cmd_encrypt_file_with_key_cli(
         None => None,
     };
 
-    let out_path =
-        encrypt_file_with_key(input, public_key, output, loaded_sk.as_ref(), force)?;
+    let out_path = encrypt_file_with_key(input, public_key, output, loaded_sk.as_ref(), force)?;
     println!("✅ File encrypted with public key: {}", out_path.display());
     Ok(())
 }
@@ -260,9 +261,7 @@ pub fn cmd_encrypt_workflow(
         let loaded_sk = match sign_key {
             Some(sk_path) => {
                 if !sk_path.exists() {
-                    return Err(
-                        format!("Signing key file not found: {}", sk_path.display()).into()
-                    );
+                    return Err(format!("Signing key file not found: {}", sk_path.display()).into());
                 }
                 let pass = Zeroizing::new(
                     Password::new().with_prompt("Enter signing private key password").interact()?,
@@ -273,13 +272,8 @@ pub fn cmd_encrypt_workflow(
         };
 
         println!("🔐 Encrypting file with existing key: {}", key_path.display());
-        let outcome = encrypt_workflow_with_existing_key(
-            input,
-            key_path,
-            output,
-            loaded_sk.as_ref(),
-            force,
-        )?;
+        let outcome =
+            encrypt_workflow_with_existing_key(input, key_path, output, loaded_sk.as_ref(), force)?;
         println!("✅ File encrypted with public key: {}", outcome.encrypted_file.display());
 
         if !outcome.instructions_written {
@@ -373,9 +367,8 @@ pub fn cmd_decrypt_workflow(
     }
 
     println!("🔓 Step 1/2: Decrypting private key...");
-    let pass = Zeroizing::new(
-        Password::new().with_prompt("Enter private key password").interact()?,
-    );
+    let pass =
+        Zeroizing::new(Password::new().with_prompt("Enter private key password").interact()?);
 
     println!("🔓 Step 2/2: Decrypting and verifying file...");
     let outcome = decrypt_workflow_with_password(

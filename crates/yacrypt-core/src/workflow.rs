@@ -83,7 +83,8 @@ pub fn encrypt_workflow_with_existing_key(
 
     let out_path = encrypt_file_with_key(input, key_path, output, signing_key, force)?;
 
-    let signed_fingerprint = signing_key.map(|sk| compute_fingerprint(&sk.verifying_key().to_bytes()));
+    let signed_fingerprint =
+        signing_key.map(|sk| compute_fingerprint(&sk.verifying_key().to_bytes()));
     let sig_note = match signed_fingerprint {
         Some(ref fp) => format!("Signed with key fingerprint: {}\n", fp),
         None => "Note: This file was encrypted without a signature.\n".to_string(),
@@ -210,9 +211,9 @@ pub fn resolve_signer_fingerprint(signer_arg: &str) -> Result<String, CryptError
         let mut f = File::open(as_path)?;
         let mut content = String::new();
         f.read_to_string(&mut content)?;
-        let bytes = general_purpose::STANDARD
-            .decode(content.trim())
-            .map_err(|e| CryptError::Key(format!("Failed to decode signer public key file: {}", e)))?;
+        let bytes = general_purpose::STANDARD.decode(content.trim()).map_err(|e| {
+            CryptError::Key(format!("Failed to decode signer public key file: {}", e))
+        })?;
         let key_bytes: [u8; 32] = bytes.try_into().map_err(|_| {
             CryptError::Key("Invalid Ed25519 public key length (expected 32 bytes)".into())
         })?;
@@ -571,8 +572,7 @@ mod tests {
 
     #[test]
     fn full_workflow_and_inspect_pubenc_roundtrip() {
-        let dir =
-            std::env::temp_dir().join(format!("yacrypt_wf_test_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("yacrypt_wf_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 

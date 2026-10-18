@@ -221,10 +221,7 @@ pub fn load_signing_key_with_password(
     password: &str,
 ) -> Result<SigningKey, CryptError> {
     if !enc_path.exists() {
-        return Err(CryptError::Key(format!(
-            "Signing key file not found: {}",
-            enc_path.display()
-        )));
+        return Err(CryptError::Key(format!("Signing key file not found: {}", enc_path.display())));
     }
 
     let mut f = File::open(enc_path)?;
@@ -245,13 +242,8 @@ pub fn load_signing_key_with_password(
         }
     }
 
-    let key = Zeroizing::new(derive_key(
-        password,
-        &blob.salt,
-        blob.mem_kib,
-        blob.t_cost,
-        blob.p_cost,
-    )?);
+    let key =
+        Zeroizing::new(derive_key(password, &blob.salt, blob.mem_kib, blob.t_cost, blob.p_cost)?);
     let plaintext =
         Zeroizing::new(decrypt_with_aad(&key, &blob.nonce, &blob.ciphertext, &blob.aad)?);
 
@@ -291,13 +283,8 @@ pub fn decrypt_backup_with_password(
         }
     }
 
-    let key = Zeroizing::new(derive_key(
-        password,
-        &blob.salt,
-        blob.mem_kib,
-        blob.t_cost,
-        blob.p_cost,
-    )?);
+    let key =
+        Zeroizing::new(derive_key(password, &blob.salt, blob.mem_kib, blob.t_cost, blob.p_cost)?);
 
     let mut plaintext =
         Zeroizing::new(decrypt_with_aad(&key, &blob.nonce, &blob.ciphertext, &blob.aad)?);
@@ -345,8 +332,7 @@ pub fn scan_keystore(keystore_dir: &Path) -> Result<Vec<KeyringEntry>, CryptErro
             fname.strip_prefix("x25519_public_").and_then(|s| s.strip_suffix(".asc"))
         {
             Some((fp, "x25519_pub"))
-        } else if let Some(fp) =
-            fname.strip_prefix("public_").and_then(|s| s.strip_suffix(".asc"))
+        } else if let Some(fp) = fname.strip_prefix("public_").and_then(|s| s.strip_suffix(".asc"))
         {
             Some((fp, "ed25519_pub"))
         } else if let Some(fp) =
@@ -357,12 +343,11 @@ pub fn scan_keystore(keystore_dir: &Path) -> Result<Vec<KeyringEntry>, CryptErro
             fname.strip_prefix("private_").and_then(|s| s.strip_suffix(".asc.enc"))
         {
             Some((fp, "ed25519_enc"))
-        } else if let Some(fp) =
-            fname.strip_prefix("recovery_instructions_").and_then(|s| s.strip_suffix(".txt"))
-        {
-            Some((fp, "instr"))
         } else {
-            None
+            fname
+                .strip_prefix("recovery_instructions_")
+                .and_then(|s| s.strip_suffix(".txt"))
+                .map(|fp| (fp, "instr"))
         };
 
         if let Some((fp_raw, kind)) = matched {
@@ -397,8 +382,7 @@ mod tests {
 
     #[test]
     fn generate_scan_and_decrypt_keystore_roundtrip() {
-        let dir =
-            std::env::temp_dir().join(format!("yacrypt_ks_test_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("yacrypt_ks_test_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 
