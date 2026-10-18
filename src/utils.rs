@@ -90,13 +90,6 @@ pub fn compute_fingerprint(pubkey_bytes: &[u8]) -> String {
     hex::encode(digest.as_slice()).to_uppercase()
 }
 
-/// 对敏感元数据（如文件名、姓名、邮箱）计算 SHA-256 摘要，用于 AAD 绑定而不泄漏明文 (M-3)
-pub fn hash_metadata_field(field: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(field.as_bytes());
-    hex::encode(hasher.finalize().as_slice())
-}
-
 /// 解析形如 `k1=v1|k2=v2` 的 AAD 键值映射
 pub fn parse_aad_map(aad: &[u8]) -> Result<BTreeMap<String, String>, String> {
     let s = std::str::from_utf8(aad).map_err(|_| "AAD is not valid UTF-8".to_string())?;
@@ -113,11 +106,6 @@ pub fn parse_aad_map(aad: &[u8]) -> Result<BTreeMap<String, String>, String> {
         map.insert(k.to_string(), v.to_string());
     }
     Ok(map)
-}
-
-/// 转义 AAD 字段中的特殊字符
-pub fn escape_aad_field(field: &str) -> String {
-    field.replace(['|', '\n', '\r', '\0'], "_")
 }
 
 /// 提示用户输入并确认密码，验证长度
@@ -160,20 +148,6 @@ mod tests {
         let fp1 = compute_fingerprint(&[0x00u8; 32]);
         let fp2 = compute_fingerprint(&[0x01u8; 32]);
         assert_ne!(fp1, fp2);
-    }
-
-    #[test]
-    fn escape_aad_field_removes_special() {
-        assert_eq!(escape_aad_field("hello|world"), "hello_world");
-        assert_eq!(escape_aad_field("line\nbreak"), "line_break");
-        assert_eq!(escape_aad_field("cr\rchar"), "cr_char");
-        assert_eq!(escape_aad_field("null\0byte"), "null_byte");
-        assert_eq!(escape_aad_field("normal text"), "normal text");
-    }
-
-    #[test]
-    fn escape_aad_field_empty() {
-        assert_eq!(escape_aad_field(""), "");
     }
 
     #[test]

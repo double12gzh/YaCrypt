@@ -6,8 +6,8 @@ use crate::crypto::{
     decrypt_with_aad, derive_key, encrypt_with_aad, pack_encrypted_blob, unpack_encrypted_blob,
 };
 use crate::utils::{
-    compute_fingerprint, escape_aad_field, hash_metadata_field, parse_aad_map,
-    prompt_password_confirm, try_mlockall, write_file_strict, write_file_strict_with_options,
+    compute_fingerprint, parse_aad_map, prompt_password_confirm, try_mlockall, write_file_strict,
+    write_file_strict_with_options,
 };
 use base64::{engine::general_purpose, Engine as _};
 use chacha20poly1305::aead::OsRng;
@@ -67,10 +67,12 @@ pub fn generate_and_store_keys(
     let x25519_public_bytes = x25519_public.to_bytes();
     let x25519_secret_bytes = Zeroizing::new(x25519_secret.to_bytes());
 
-    // 3. 获取或自动生成口令（注意：在 Argon2 派生和写盘成功前不提前打印自动口令，避免崩溃误导用户）
+    // 3. 获取或自动生成口令。默认（回车）由用户自设口令——自动生成口令会打印到 stdout，
+    //    存在 scrollback / script 日志 / tmux 缓冲泄漏面（2026-10-18 复审 P2），不再作为默认路径；
+    //    若显式选择自动生成，则在 Argon2 派生和写盘成功前不提前打印，避免崩溃误导用户
     let auto_backup_pass = Confirm::new()
         .with_prompt("Auto-generate backup encryption password?")
-        .default(true)
+        .default(false)
         .interact()?;
 
     let backup_pass: Zeroizing<String> = if auto_backup_pass {
@@ -89,10 +91,8 @@ pub fn generate_and_store_keys(
     let t_cost = DEFAULT_ARGON_T_COST;
     let p_cost = DEFAULT_ARGON_P_COST;
 
-    // 4. 在内存中派生密钥并加密两把私钥（使用身份元数据哈希绑定 AAD，避免明文泄漏姓名/邮箱 M-3）
-    let name_escaped = escape_aad_field(name);
-    let email_escaped = escape_aad_field(email);
-    let id_hash = hash_metadata_field(&format!("{}|{}", name_escaped, email_escaped));
+    // 4. 在内存中派生密钥并加密两把私钥。AAD 仅绑定指纹与密钥类型；不再写入姓名/邮箱摘要——
+    //    低熵摘要可被字典还原（2026-10-18 复审收口 M-3），身份元数据不进入任何落盘文件
 
     let mut salt = [0u8; SALT_LEN];
     OsRng.fill_bytes(&mut salt);
@@ -100,7 +100,7 @@ pub fn generate_and_store_keys(
     OsRng.fill_bytes(&mut nonce);
 
     let sym_key = Zeroizing::new(derive_key(&backup_pass, &salt, mem_kib, t_cost, p_cost)?);
-    let aad_str = format!("id_sha256={}|fp={}|type=ed25519", id_hash, fingerprint);
+    let aad_str = format!("fp={}|type=ed25519", fingerprint);
     let aad_bytes = aad_str.as_bytes();
     let ciphertext = encrypt_with_aad(&sym_key, &nonce, pkcs8_der, aad_bytes)?;
     let blob = pack_encrypted_blob(mem_kib, t_cost, p_cost, &salt, &nonce, aad_bytes, &ciphertext)?;
@@ -112,7 +112,7 @@ pub fn generate_and_store_keys(
 
     let x25519_sym_key =
         Zeroizing::new(derive_key(&backup_pass, &x25519_salt, mem_kib, t_cost, p_cost)?);
-    let x25519_aad_str = format!("id_sha256={}|fp={}|type=x25519", id_hash, fingerprint);
+    let x25519_aad_str = format!("fp={}|type=x25519", fingerprint);
     let x25519_aad_bytes = x25519_aad_str.as_bytes();
     let x25519_ciphertext =
         encrypt_with_aad(&x25519_sym_key, &x25519_nonce, &*x25519_secret_bytes, x25519_aad_bytes)?;
@@ -140,9 +140,7 @@ pub fn generate_and_store_keys(
     let instr = format!(
         "Recovery Instructions\n\
         ====================\n\n\
-        Fingerprint: {fp}\n\
-        Name: {name}\n\
-        Email: {email}\n\n\
+        Fingerprint: {fp}\n\n\
         === Decrypt an encrypted file ===\n\n\
         To decrypt a .pubenc file encrypted with this keypair:\n\n\
           yacrypt decrypt <file.pubenc> \\\n\
@@ -157,8 +155,6 @@ pub fn generate_and_store_keys(
         - Store the encrypted backup in a safe location\n\
         - The backup password is required to decrypt the private key\n",
         fp = fingerprint,
-        name = name_escaped,
-        email = email_escaped,
         x25519_enc = x25519_enc_path.display(),
         ed_enc = enc_path.display(),
     );
@@ -187,6 +183,9 @@ pub fn generate_and_store_keys(
         println!("   {}", backup_pass.as_str());
         println!("   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.");
     }
+
+    // 身份信息仅回显给用户自留记录，不写入任何文件（2026-10-18 复审收口 M-3；参数保留以兼容 CLI 与未来 v2 身份模型）
+    println!("👤 Key owner: {} <{}> (not stored in any file — keep your own record)", name, email);
 
     Ok(GeneratedKeys {
         fingerprint,

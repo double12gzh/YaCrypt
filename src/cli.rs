@@ -13,9 +13,9 @@ pub struct Cli {
 pub enum Commands {
     /// Generate a new Ed25519 and X25519 keypair with encrypted private key backup
     GenKeypair {
-        /// human name
+        /// human name (echoed for your records only — never stored in any file)
         name: String,
-        /// email (used in metadata)
+        /// email (echoed for your records only — never stored in any file)
         #[arg(default_value = "secure@example.com")]
         email: String,
     },
@@ -57,10 +57,10 @@ pub enum Commands {
     Encrypt {
         /// Input file to encrypt
         input: PathBuf,
-        /// Human name for the keypair (used in metadata, ignored if --key is specified)
+        /// Human name for the keypair (echoed for your records only; ignored if --key is specified)
         #[arg(default_value = "user")]
         name: String,
-        /// Email (used in metadata, ignored if --key is specified)
+        /// Email (echoed for your records only; ignored if --key is specified)
         #[arg(default_value = "secure@example.com")]
         email: String,
         /// Output encrypted file (default: input with .pubenc extension)

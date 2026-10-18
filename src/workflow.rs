@@ -508,7 +508,7 @@ mod tests {
         let sig = attacker_sk.sign(payload).to_bytes();
 
         let aad = format!(
-            "file_sha256=deadbeef|flags=01|ephemeral_pub={}|sig_vk={}",
+            "flags=01|ephemeral_pub={}|sig_vk={}",
             hex::encode(eph),
             hex::encode(attacker_vk)
         );
@@ -560,7 +560,7 @@ mod tests {
     fn verify_rejects_unsigned_when_signature_required() {
         let eph = [0x11u8; 32];
         let nonce = [0x22u8; 24];
-        let aad = format!("file_sha256=deadbeef|flags=00|ephemeral_pub={}", hex::encode(eph));
+        let aad = format!("flags=00|ephemeral_pub={}", hex::encode(eph));
         let unsigned_pubenc = UnpackedPubenc {
             ephemeral_pub: eph,
             nonce,

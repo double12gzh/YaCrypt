@@ -65,7 +65,9 @@ fn cli_encrypt_with_key_safe_write_semantics_and_no_cleartext_filename_leak() {
         !blob_lossy.contains("confidential_salary_2026.txt"),
         "cleartext filename leaked in pubenc blob"
     );
-    assert!(blob_lossy.contains("file_sha256="));
+    // M-3 复审收口（2026-10-18）：AAD 不再携带 file_sha256/id_sha256 等可被字典还原的低熵摘要
+    assert!(!blob_lossy.contains("file_sha256="), "low-entropy metadata digest present in AAD");
+    assert!(!blob_lossy.contains("id_sha256="), "low-entropy metadata digest present in AAD");
 
     // M-4(1): Default refuses to overwrite existing file
     let enc_overwrite = Command::new(yacrypt_bin())
@@ -273,39 +275,60 @@ fn cli_full_interactive_workflow_and_attack_pocs() {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
 
-    // 1. Encrypt signed workflow (auto-generates password)
+    // 1. Encrypt signed workflow — 默认路径：回车拒绝自动生成，改用户自设口令（2026-10-18 复审收口）
     let f2_path = dir.join("f2.txt");
     fs::write(&f2_path, b"top secret doc 2").unwrap();
 
+    let user_pw = "pty-test-password-1";
     let (code, sig, out) = run_with_pty(
         &dir,
         &["encrypt", "f2.txt", "BobSecretName", "bob_secret@example.com"],
-        &[("Auto-generate backup encryption password", "")],
+        &[
+            ("Auto-generate backup encryption password", ""),
+            ("Enter backup encryption password", user_pw),
+            ("Confirm password", user_pw),
+        ],
     );
     assert_eq!(sig, None);
     assert_eq!(code, 0, "encrypt failed: {}", out);
+    let pw = user_pw.to_string();
+    // 默认路径不得把任何口令打印到 stdout（复审 P2）
+    assert!(
+        !out.contains("Backup password generated:"),
+        "default path must not print a backup password to stdout: {}",
+        out
+    );
 
-    // Extract generated backup password and fingerprint
-    let pw = out
-        .lines()
-        .skip_while(|l| !l.contains("Backup password generated:"))
-        .nth(1)
-        .unwrap()
-        .trim()
-        .to_string();
     let fp = out
         .lines()
         .find_map(|l| l.split("Fingerprint:").nth(1).map(|s| s.trim().to_string()))
         .unwrap();
     assert_eq!(fp.len(), 64);
 
-    // M-3: Verify keystore private key blobs do NOT leak cleartext name or email
+    // M-3: Verify keystore private key blobs do NOT leak cleartext name, email, or any low-entropy digest
     let ed_priv_path = dir.join(format!("keystore/private_{}.asc.enc", fp));
     let x_priv_path = dir.join(format!("keystore/x25519_private_{}.asc.enc", fp));
     let ed_priv_raw = fs::read(&ed_priv_path).unwrap();
     let ed_priv_str = String::from_utf8_lossy(&ed_priv_raw);
     assert!(!ed_priv_str.contains("BobSecretName"));
     assert!(!ed_priv_str.contains("bob_secret@example.com"));
+    assert!(
+        !ed_priv_str.contains("id_sha256="),
+        "low-entropy identity digest leaked in keystore blob"
+    );
+
+    // M-3 复审收口：恢复说明文件不再包含明文身份字段，但保留指纹与用法
+    let instr_path = dir.join(format!("keystore/recovery_instructions_{}.txt", fp));
+    let instr = fs::read_to_string(&instr_path).unwrap();
+    assert!(
+        !instr.contains("BobSecretName"),
+        "recovery instructions must not contain plaintext name"
+    );
+    assert!(
+        !instr.contains("bob_secret@example.com"),
+        "recovery instructions must not contain plaintext email"
+    );
+    assert!(instr.contains(&format!("Fingerprint: {}", fp)));
 
     // 2. Decrypt valid signed file -> succeeds and prints verified signer fingerprint
     let dec_out = dir.join("f2_decrypted.txt");
@@ -473,7 +496,7 @@ fn cli_encrypt_failure_rolls_back_fresh_keypair() {
     let (code1, sig1, out1) = run_with_pty(
         &dir,
         &["encrypt", "f.txt", "Tester", "t@example.com"],
-        &[("Auto-generate backup encryption password", "")],
+        &[("Auto-generate backup encryption password", "y")],
     );
     assert_eq!(sig1, None);
     assert_eq!(code1, 0, "first encrypt failed: {}", out1);
@@ -484,7 +507,7 @@ fn cli_encrypt_failure_rolls_back_fresh_keypair() {
     let (code2, sig2, out2) = run_with_pty(
         &dir,
         &["encrypt", "f.txt", "Tester", "t@example.com"],
-        &[("Auto-generate backup encryption password", "")],
+        &[("Auto-generate backup encryption password", "y")],
     );
     assert_eq!(sig2, None);
     assert_ne!(code2, 0, "second encrypt should fail: {}", out2);

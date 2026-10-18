@@ -3,7 +3,7 @@ use crate::constants::XNONCE_LEN;
 use crate::crypto::{
     derive_symmetric_key_from_shared_secret, encrypt_with_aad, pack_pubenc_blob, PubencSignature,
 };
-use crate::utils::{escape_aad_field, hash_metadata_field, write_file_strict_with_options};
+use crate::utils::write_file_strict_with_options;
 use base64::{engine::general_purpose, Engine as _};
 use chacha20poly1305::aead::OsRng;
 use ed25519_dalek::{Signer, SigningKey};
@@ -87,22 +87,16 @@ pub fn cmd_encrypt_file_with_key(
     let mut nonce = [0u8; XNONCE_LEN];
     OsRng.fill_bytes(&mut nonce);
 
-    // 构建 AAD（包含文件名 SHA-256 摘要、flags、临时公钥及签名公钥，防止篡改/剥离且不泄漏明文文件名 M-1, M-3）
-    let filename = input.file_name().and_then(|s| s.to_str()).unwrap_or("file");
-    let file_hash = hash_metadata_field(&escape_aad_field(filename));
+    // 构建 AAD（仅绑定安全关键头部字段：flags、临时公钥、签名公钥，防篡改/剥离 M-1）。
+    // 不携带任何文件名/身份元数据或其低熵摘要——可被字典还原（2026-10-18 复审收口 M-3）
     let aad_str = if let Some(ref sig) = signature_data {
         format!(
-            "file_sha256={}|flags=01|ephemeral_pub={}|sig_vk={}",
-            file_hash,
+            "flags=01|ephemeral_pub={}|sig_vk={}",
             hex::encode(ephemeral_public_bytes),
             hex::encode(sig.verifying_key)
         )
     } else {
-        format!(
-            "file_sha256={}|flags=00|ephemeral_pub={}",
-            file_hash,
-            hex::encode(ephemeral_public_bytes)
-        )
+        format!("flags=00|ephemeral_pub={}", hex::encode(ephemeral_public_bytes))
     };
     let aad_bytes = aad_str.as_bytes();
 
