@@ -57,10 +57,7 @@ pub fn cmd_encrypt_file_with_key(
     let signature_data = signing_key.map(|sk| {
         let sig = sk.sign(&plaintext);
         let vk = sk.verifying_key();
-        PubencSignature {
-            verifying_key: vk.to_bytes(),
-            signature: sig.to_bytes(),
-        }
+        PubencSignature { verifying_key: vk.to_bytes(), signature: sig.to_bytes() }
     });
 
     // 生成临时 X25519 密钥对用于密钥交换

@@ -54,10 +54,8 @@ pub fn cmd_encrypt_workflow(
         );
         let instr_path = {
             let mut p = out_path.clone();
-            let new_ext = format!(
-                "{}.decrypt.txt",
-                p.extension().and_then(|s| s.to_str()).unwrap_or("")
-            );
+            let new_ext =
+                format!("{}.decrypt.txt", p.extension().and_then(|s| s.to_str()).unwrap_or(""));
             p.set_extension(new_ext);
             p
         };
@@ -66,7 +64,10 @@ pub fn cmd_encrypt_workflow(
         println!("✅ File encrypted (no signature — use full workflow for signed encryption)");
         println!();
         println!("📋 To decrypt, you need the corresponding encrypted private key:");
-        println!("   yacrypt decrypt {} --private-key <x25519_private_*.asc.enc>", out_path.display());
+        println!(
+            "   yacrypt decrypt {} --private-key <x25519_private_*.asc.enc>",
+            out_path.display()
+        );
         println!();
         println!("📄 Decryption instructions saved to: {}", instr_path.display());
     } else {
@@ -110,10 +111,8 @@ pub fn cmd_encrypt_workflow(
         );
         let instr_path = {
             let mut p = out_path.clone();
-            let new_ext = format!(
-                "{}.decrypt.txt",
-                p.extension().and_then(|s| s.to_str()).unwrap_or("")
-            );
+            let new_ext =
+                format!("{}.decrypt.txt", p.extension().and_then(|s| s.to_str()).unwrap_or(""));
             p.set_extension(new_ext);
             p
         };
@@ -200,8 +199,8 @@ pub fn cmd_decrypt_workflow(
     f.read_to_end(&mut enc_blob)?;
 
     // 使用标准格式解析 pubenc 文件（含 magic 验证和可选签名提取）
-    let pubenc = unpack_pubenc_blob(&enc_blob)
-        .map_err(|s| format!("Invalid pubenc file format: {}", s))?;
+    let pubenc =
+        unpack_pubenc_blob(&enc_blob).map_err(|s| format!("Invalid pubenc file format: {}", s))?;
 
     // 将临时公钥转换为 X25519 PublicKey
     let ephemeral_public = X25519PublicKey::from(pubenc.ephemeral_pub);
@@ -236,11 +235,9 @@ pub fn cmd_decrypt_workflow(
         let signature = Signature::from_bytes(&sig_data.signature);
         if verifying_key.verify(&plaintext, &signature).is_err() {
             plaintext.zeroize();
-            return Err(
-                "❌ Signature verification FAILED — file may have been tampered with. \
+            return Err("❌ Signature verification FAILED — file may have been tampered with. \
                  Decrypted content NOT written to disk."
-                    .into(),
-            );
+                .into());
         }
         println!("✅ File signature verified successfully");
     } else {
@@ -254,7 +251,11 @@ pub fn cmd_decrypt_workflow(
             let mut path = input.to_path_buf();
             if path.extension().and_then(|s| s.to_str()) == Some("pubenc") {
                 // Strip the .pubenc extension without leaving a trailing dot
-                let file_name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_owned()).unwrap_or_else(|| "decrypted".to_owned());
+                let file_name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_owned())
+                    .unwrap_or_else(|| "decrypted".to_owned());
                 path.set_file_name(file_name);
             } else {
                 path.set_extension("decrypted");

@@ -207,9 +207,9 @@ pub fn decrypt_with_aad(
 ) -> Result<Vec<u8>, CryptError> {
     let cipher = XChaCha20Poly1305::new(chacha20poly1305::Key::from_slice(key));
     let xnonce = XNonce::from_slice(nonce);
-    cipher
-        .decrypt(xnonce, chacha20poly1305::aead::Payload { msg: ciphertext, aad })
-        .map_err(|_| CryptError::Crypto("Decryption failed — wrong password or file tampered".into()))
+    cipher.decrypt(xnonce, chacha20poly1305::aead::Payload { msg: ciphertext, aad }).map_err(|_| {
+        CryptError::Crypto("Decryption failed — wrong password or file tampered".into())
+    })
 }
 
 /// 使用 HKDF 从 X25519 共享密钥派生对称加密密钥
@@ -569,7 +569,9 @@ mod tests {
         let eph_bytes = eph_pub.to_bytes();
         let shared = eph.diffie_hellman(&recipient_pub);
         let sym = derive_symmetric_key_from_shared_secret(
-            shared.as_bytes(), &eph_bytes, b"yacrypt-file-encryption-v1",
+            shared.as_bytes(),
+            &eph_bytes,
+            b"yacrypt-file-encryption-v1",
         );
         let mut nonce = [0u8; XNONCE_LEN];
         OsRng.fill_bytes(&mut nonce);
@@ -580,7 +582,9 @@ mod tests {
 
         let shared2 = recipient.diffie_hellman(&X25519PublicKey::from(p.ephemeral_pub));
         let sym2 = derive_symmetric_key_from_shared_secret(
-            shared2.as_bytes(), &p.ephemeral_pub, b"yacrypt-file-encryption-v1",
+            shared2.as_bytes(),
+            &p.ephemeral_pub,
+            b"yacrypt-file-encryption-v1",
         );
         let dec = decrypt_with_aad(&sym2, &p.nonce, &p.ciphertext, &p.aad).unwrap();
         assert_eq!(dec, pt.to_vec());

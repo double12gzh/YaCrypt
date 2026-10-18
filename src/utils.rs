@@ -2,11 +2,7 @@
 use crate::constants::{MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH};
 use dialoguer::Password;
 use sha2::{Digest, Sha256};
-use std::{
-    fs,
-    io::Write,
-    path::Path,
-};
+use std::{fs, io::Write, path::Path};
 
 /// 尝试锁定内存，防止敏感数据被交换到磁盘
 pub fn try_mlockall() {
@@ -31,12 +27,8 @@ pub fn try_mlockall() {
 pub fn write_file_strict(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt;
     // 在创建文件时就设置权限，避免 TOCTOU 竞态
-    let mut f = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(0o600)
-        .open(path)?;
+    let mut f =
+        fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
     f.write_all(data)?;
     f.sync_all()?; // 确保数据写入磁盘
     Ok(())
