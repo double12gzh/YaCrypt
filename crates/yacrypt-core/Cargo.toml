@@ -1,0 +1,25 @@
+[package]
+name = "yacrypt-core"
+version = "0.0.1"
+edition = "2021"
+authors = ["double12gzh"]
+license = "MIT"
+description = "Core cryptographic primitives, keystore management, and encryption workflows for YaCrypt."
+
+[dependencies]
+argon2 = "0.5"
+base64 = "0.22"
+chacha20poly1305 = "0.10"
+ed25519-dalek = { version = "2.1", features = ["pkcs8", "zeroize"] }
+hex = "0.4"
+hkdf = "0.12"
+libc = "0.2"
+pkcs8 = { version = "0.10", features = ["alloc"] }
+rand = "0.8.0"
+sha2 = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+zeroize = { version = "1.7", features = ["zeroize_derive"] }
+
+[lints.clippy]
+module_inception = "allow"
+new_without_default = "allow"
