@@ -25,6 +25,7 @@ Run the full pre-commit quality gate in strict sequence:
    ```bash
    cargo deny check
    ```
+   If `cargo-deny` is missing (`cargo deny` → `no such command`), install it with `cargo install cargo-deny --locked`, or run `make security`, which auto-installs it before checking.
 
 ## Validation Rules
 - Execute each step sequentially.
