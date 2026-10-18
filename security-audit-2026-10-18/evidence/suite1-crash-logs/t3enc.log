@@ -1,9 +1,0 @@
-
-🔐 Step 1/2: Generating keypair and encrypting keys...
-Auto-generate backup encryption password? [Y/n] [?25l[2KAuto-generate backup encryption password? yes
-[?25h✅ Backup password generated:
-   Ge70KN3T29AcNQjTdoMoScw9phfG5GjIm8UV4QjkbLfKexHH0cb3y5bhqBY3LCT7
-   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.
-memory allocation of 67108864 bytes failed
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-Aborted

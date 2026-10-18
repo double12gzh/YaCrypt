@@ -1,8 +1,0 @@
-🔓 Step 1/2: Decrypting private key...
-Enter private key password: 
-[1A[2K[1B[1AEnter private key password: [hidden]
-✅ Private key decrypted
-🔓 Step 2/2: Decrypting and verifying file...
-Error: "Invalid pubenc file format: Format error: bad magic — not a valid pubenc file"
-
-DRIVE_EXIT=1

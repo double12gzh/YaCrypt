@@ -1,12 +1,0 @@
-Auto-generate backup encryption password? [Y/n] [?25l[2KAuto-generate backup encryption password? yes
-[?25h✅ Backup password generated:
-   YjFNRdWOzmgbJQq4Mg36BDz1H937ji3oF0SSchfz9JhWQEOGyMyCLtUvCdnIS4e6
-   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.
-✅ Ed25519 keypair generated and encrypted backup written to: keystore/private_1CAF11096CF53BCC2E2C0C2ED68B25E7CE22F82502DDF266227153C731B3D34E.asc.enc
-✅ Ed25519 public key written to: keystore/public_1CAF11096CF53BCC2E2C0C2ED68B25E7CE22F82502DDF266227153C731B3D34E.asc
-✅ X25519 keypair generated for encryption
-✅ X25519 public key written to: keystore/x25519_public_1CAF11096CF53BCC2E2C0C2ED68B25E7CE22F82502DDF266227153C731B3D34E.asc
-✅ X25519 private key encrypted: keystore/x25519_private_1CAF11096CF53BCC2E2C0C2ED68B25E7CE22F82502DDF266227153C731B3D34E.asc.enc
-Fingerprint: 1CAF11096CF53BCC2E2C0C2ED68B25E7CE22F82502DDF266227153C731B3D34E
-
-DRIVE_EXIT=0

@@ -1,5 +1,0 @@
-HEAD at packaging time: 1a0f7be chore(agent): refine multi-agent concurrency rules and unify skill directory symlink
-build revision: 12f5258 (pre-rustfmt reflow; source-equivalent to b778200/1a0f7be)
-cargo.lock sha256 (first 32): 826b7abd62f04be42238e853ac68d4c9
-release binary sha256: 3c35eec8609b2cfae39d25c6a07f5a209aa8b2abfa636c3854f44d9b1f09759e
-toolchain: rustc 1.99.1 (58cf8f9c3 2026-10-13)

@@ -1,8 +1,0 @@
-
-Auto-generate backup encryption password? [Y/n] [?25l[2KAuto-generate backup encryption password? yes
-[?25h✅ Backup password generated:
-   fBacdcZiBqL0CVNclgBYVbk3GOb40gjJVdYZ6vk5iwYLgmpyWlWZi9vCcPrFjamx
-   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.
-memory allocation of 67108864 bytes failed
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-Aborted

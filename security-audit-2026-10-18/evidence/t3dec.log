@@ -1,10 +1,0 @@
-🔓 Step 1/2: Decrypting private key...
-Enter private key password: 
-[1A[2K[1B[1AEnter private key password: [hidden]
-✅ Private key decrypted
-🔓 Step 2/2: Decrypting and verifying file...
-✅ File signature verified successfully
-✅ Complete decryption workflow finished!
-   - Decrypted file: f2
-
-DRIVE_EXIT=0

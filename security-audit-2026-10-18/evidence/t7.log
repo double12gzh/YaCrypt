@@ -1,10 +1,0 @@
-Enter backup password: 
-[1A[2K[1B[1AEnter backup password: [hidden]
-
-thread 'main' (83) panicked at /sessions/nice-jolly-allen/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/generic-array-0.14.7/src/lib.rs:572:9:
-assertion `left == right` failed
-  left: 23
- right: 24
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-
-DRIVE_EXIT=SIGNAL:6

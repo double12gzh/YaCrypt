@@ -1,13 +1,0 @@
-⚠️  mlockall failed (perms?). Secrets may be swapped to disk.
-Auto-generate backup encryption password? [Y/n] [?25l[2KAuto-generate backup encryption password? yes
-[?25h✅ Backup password generated:
-   YEIUIQmM0KJ2Yy891TZbY1VXtwjed31BMWGsPhKWrGRUEe4HFMJ5xsKGfWUSMtm-
-   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.
-✅ Ed25519 keypair generated and encrypted backup written to: keystore/private_5D5559BD19026BC1DCAB067852A47FB349FB581565D19B7FA6D1230DA700E118.asc.enc
-✅ Ed25519 public key written to: keystore/public_5D5559BD19026BC1DCAB067852A47FB349FB581565D19B7FA6D1230DA700E118.asc
-✅ X25519 keypair generated for encryption
-✅ X25519 public key written to: keystore/x25519_public_5D5559BD19026BC1DCAB067852A47FB349FB581565D19B7FA6D1230DA700E118.asc
-✅ X25519 private key encrypted: keystore/x25519_private_5D5559BD19026BC1DCAB067852A47FB349FB581565D19B7FA6D1230DA700E118.asc.enc
-Fingerprint: 5D5559BD19026BC1DCAB067852A47FB349FB581565D19B7FA6D1230DA700E118
-
-DRIVE_EXIT=0

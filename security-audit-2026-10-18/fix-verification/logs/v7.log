@@ -1,10 +1,0 @@
-🔓 Step 1/2: Decrypting private key...
-Enter private key password: 
-[1A[2K[1B[1AEnter private key password: [hidden]
-✅ Private key decrypted
-🔓 Step 2/2: Decrypting and verifying file...
-✅ File signature verified successfully (signer fingerprint: 92DECFBD07D097FF724B6EDA1C3000CED14BBBA5033C6F11314C1C8B2AF5BBDE)
-✅ Complete decryption workflow finished!
-   - Decrypted file: old/f2.txt
-
-DRIVE_EXIT=0
