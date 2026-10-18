@@ -32,6 +32,7 @@ pub struct GeneratedKeys {
     pub x25519_enc_path: PathBuf,
     pub enc_path: PathBuf,
     pub pub_path: PathBuf,
+    pub instr_path: PathBuf,
 }
 
 /// 生成密钥对并安全存储到 keystore（共用逻辑）
@@ -194,6 +195,7 @@ pub fn generate_and_store_keys(
         x25519_enc_path,
         enc_path,
         pub_path,
+        instr_path,
     })
 }
 

@@ -461,3 +461,36 @@ fn cli_full_interactive_workflow_and_attack_pocs() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn cli_encrypt_failure_rolls_back_fresh_keypair() {
+    let dir = std::env::temp_dir().join(format!("yacrypt_rollback_e2e_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("f.txt"), b"rollback test").unwrap();
+
+    // 第一次运行：成功，keystore 写入 5 个文件
+    let (code1, sig1, out1) = run_with_pty(
+        &dir,
+        &["encrypt", "f.txt", "Tester", "t@example.com"],
+        &[("Auto-generate backup encryption password", "")],
+    );
+    assert_eq!(sig1, None);
+    assert_eq!(code1, 0, "first encrypt failed: {}", out1);
+    let count1 = fs::read_dir(dir.join("keystore")).unwrap().count();
+    assert_eq!(count1, 5);
+
+    // 第二次运行（无 --force）：输出已存在导致步骤 2 失败，本次新生成的密钥对应被回滚
+    let (code2, sig2, out2) = run_with_pty(
+        &dir,
+        &["encrypt", "f.txt", "Tester", "t@example.com"],
+        &[("Auto-generate backup encryption password", "")],
+    );
+    assert_eq!(sig2, None);
+    assert_ne!(code2, 0, "second encrypt should fail: {}", out2);
+    assert!(out2.contains("rolled back"), "rollback note missing: {}", out2);
+    let count2 = fs::read_dir(dir.join("keystore")).unwrap().count();
+    assert_eq!(count2, count1, "fresh keypair files were not rolled back");
+
+    let _ = fs::remove_dir_all(&dir);
+}

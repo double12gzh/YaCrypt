@@ -53,9 +53,10 @@ pub fn derive_key(
         .map_err(|e| CryptError::Key(format!("Invalid Argon2 params: {}", e)))?;
     let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut out = vec![0u8; KEY_LEN];
-    argon2
-        .hash_password_into(password.as_bytes(), salt, &mut out)
-        .map_err(|e| CryptError::Key(format!("Argon2 key derivation failed: {}", e)))?;
+    if let Err(e) = argon2.hash_password_into(password.as_bytes(), salt, &mut out) {
+        out.zeroize();
+        return Err(CryptError::Key(format!("Argon2 key derivation failed: {}", e)));
+    }
     let mut key = [0u8; KEY_LEN];
     key.copy_from_slice(&out);
     out.zeroize();

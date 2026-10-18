@@ -31,38 +31,51 @@ pub fn write_file_strict(path: &Path, data: &[u8]) -> io::Result<()> {
 }
 
 /// 以严格权限写入文件（0o600）：
-/// - 始终拒绝符号链接（检查 symlink_metadata + O_NOFOLLOW）与目录
+/// - 始终拒绝符号链接（前置检查 + O_NOFOLLOW）与非普通文件（目录、FIFO、设备等）
 /// - `force = false` 时使用 `create_new(true)` 防止静默覆盖既有文件
-/// - `force = true` 时允许覆盖普通文件，但写入前先对 fd 执行 `fchmod(0o600)` 收紧既有权限
+/// - `force = true` 时允许覆盖普通文件：先对 fd 执行 `fchmod(0o600)` 收紧权限，再截断写入
 pub fn write_file_strict_with_options(path: &Path, data: &[u8], force: bool) -> io::Result<()> {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     if let Ok(meta) = fs::symlink_metadata(path) {
-        if meta.file_type().is_symlink() {
+        let ft = meta.file_type();
+        if ft.is_symlink() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("Refusing to write to symlink: {}", path.display()),
             ));
         }
-        if meta.is_dir() {
+        if !ft.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("Target path is a directory: {}", path.display()),
+                format!("Refusing to write to non-regular file: {}", path.display()),
             ));
         }
     }
 
     let mut opts = fs::OpenOptions::new();
-    opts.write(true).mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    // O_NOFOLLOW 阻断符号链接；O_NONBLOCK 保证万一检查与 open 之间路径被替换为 FIFO，
+    // open 也不会永久阻塞，随后还会基于已打开的 fd 复核文件类型。
+    opts.write(true).mode(0o600).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     if force {
-        opts.create(true).truncate(true);
+        opts.create(true);
     } else {
         opts.create_new(true);
     }
 
     let mut f = opts.open(path)?;
+    if !f.metadata()?.file_type().is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Refusing to write to non-regular file: {}", path.display()),
+        ));
+    }
     // 对已打开的文件描述符显式执行 fchmod(0o600)，确保覆盖既有 0644 文件时权限也被收紧为 0600
     f.set_permissions(fs::Permissions::from_mode(0o600))?;
+    if force {
+        // 权限收紧之后再截断，避免旧内容与新内容在错误权限下的混写窗口
+        f.set_len(0)?;
+    }
     f.write_all(data)?;
     f.sync_all()?; // 确保数据写入磁盘
     Ok(())
@@ -200,6 +213,24 @@ mod tests {
         assert!(write_file_strict(&link_path, b"hacked").is_err());
         assert!(write_file_strict_with_options(&link_path, b"hacked", true).is_err());
         assert_eq!(fs::read(&file_path).unwrap(), b"forced");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_file_strict_rejects_fifo_without_blocking() {
+        let dir = std::env::temp_dir().join(format!("yacrypt_fifo_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let fifo = dir.join("secret.pipe");
+
+        let c_path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+        let rc = unsafe { libc::mkfifo(c_path.as_ptr(), 0o600 as libc::mode_t) };
+        assert_eq!(rc, 0, "mkfifo failed");
+
+        // 前置检查与 O_NONBLOCK 双保险：两种模式都必须立即报错而不是阻塞
+        assert!(write_file_strict(&fifo, b"x").is_err());
+        assert!(write_file_strict_with_options(&fifo, b"x", true).is_err());
 
         let _ = fs::remove_dir_all(&dir);
     }

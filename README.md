@@ -165,4 +165,5 @@ yacrypt decrypt-private-key keystore/private_<fp>.asc.enc [-o output.der] [--for
 - 协议头部字段（`flags`、临时公钥 `ephemeral_pub`、签名公钥 `sig_vk`）与元数据摘要强绑定至 AEAD 的 AAD，任何头部篡改或签名剥离均导致解密认证失败，且不泄漏明文文件名与用户身份隐私
 - Ed25519 签名验证与签名者指纹信任锚核验在写入磁盘**之前**执行，验证失败或签名者指纹不匹配则立即中止并拒绝输出任何数据
 - 所有敏感内存在使用后立即通过 `zeroize` 清零
-- 输出与私钥文件默认使用 `create_new` + `O_NOFOLLOW` + `0o600` 权限写入，拒绝跟随符号链接与静默覆盖既有文件
+- 输出与私钥文件默认使用 `create_new` + `O_NOFOLLOW` + `0o600` 权限写入，拒绝跟随符号链接、非普通文件与静默覆盖既有文件
+- 跨不可信渠道接收文件时，建议使用 `--require-signature` 强制要求签名，并用 `--signer <指纹>` 固定预期签名者

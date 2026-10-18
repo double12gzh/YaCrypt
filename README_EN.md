@@ -165,4 +165,5 @@ yacrypt decrypt-private-key keystore/private_<fp>.asc.enc [-o output.der] [--for
 - Protocol header fields (`flags`, ephemeral public key `ephemeral_pub`, and signing public key `sig_vk`) and hashed metadata digests are cryptographically bound into the AEAD AAD; any header tampering or signature stripping causes AEAD/header verification failure without leaking cleartext filenames or user identity
 - Ed25519 signature verification and signer fingerprint trust anchor matching are performed **before** writing the file; output is rejected if verification fails or the signer is untrusted
 - All sensitive memory is zeroized immediately after use
-- Output and private key files are written using `create_new` + `O_NOFOLLOW` + `0o600` permissions by default, refusing to follow symlinks or silently overwrite existing files
+- Output and private key files are written using `create_new` + `O_NOFOLLOW` + `0o600` permissions by default, refusing to follow symlinks, write to non-regular files, or silently overwrite existing files
+- When receiving files over untrusted channels, prefer `--require-signature` together with `--signer <fingerprint>` to pin the expected signer
