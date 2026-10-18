@@ -93,11 +93,11 @@ src/main.rs (CLI 路由分发 + try_mlockall 内存锁)
   * AI Agent 作为结对编程助手（Pair Programmer），其协同贡献统一通过业界标准的 `Co-Authored-By` 尾注进行审计追踪。
 * **强制规则**：
   1. **Author & Committer 归属人类**：执行 `git commit` 时，必须直接继承并使用当前操作者本地配置的个人身份（`user.name` 与 `user.email`），**严禁**通过 `--author`、环境变量或 `git config` 篡改或抹除人类主责任人。
-  2. **AI 协同署名（强制附加）**：提交信息第 3 段（末尾）**必须显式附加** `Co-Authored-By: <Model> <noreply@...>` 尾注。
+  2. **AI 协同署名（强制附加）**：提交信息第 3 段（末尾）**必须显式附加** `Co-Authored-By: <Model> <email>` 尾注。
   3. **模型名称规范**：仅使用实际驱动的**底层基础模型大类名称**，**严禁携带版本号、子型号细节或外层客户端/Harness 名称**（如仅使用 `Gemini`、`Claude`、`GPT`、`DeepSeek` 等；无论通过 `Antigravity`、`agy`、`Oh-My-Pi (omp)` 还是 `Claude Code` 调用，均按当前会话实际所用的底层大模型署名；严禁使用 `Gemini 3.8 Flash`、`Claude 3.7 Sonnet`、`Oh-My-Pi`、`Antigravity` 等）。
-  4. **邮箱格式规范**：使用对应模型厂商的官方无回复域名：
+  4. **邮箱格式规范**：使用对应模型厂商的官方无回复邮箱（或 GitHub 官方账号绑定的 `users.noreply.github.com` 邮箱以点亮头像）：
      * Anthropic Claude 系列：`Co-Authored-By: Claude <noreply@anthropic.com>`
-     * Google Gemini 系列：`Co-Authored-By: Gemini <noreply@google.com>`
+     * Google Gemini 系列：`Co-Authored-By: Gemini <218195315+gemini-cli@users.noreply.github.com>`
      * OpenAI GPT / Codex 系列：`Co-Authored-By: GPT <noreply@openai.com>`
      * DeepSeek 系列：`Co-Authored-By: DeepSeek <noreply@deepseek.com>`
   5. **命令执行标准模板**：
@@ -105,7 +105,7 @@ src/main.rs (CLI 路由分发 + try_mlockall 内存锁)
      git commit -m "<type>(<scope>): <subject>" \
        -m "- <变更点 1>
      - <变更点 2>" \
-       -m "Co-Authored-By: <Model> <noreply@domain.com>"
+       -m "Co-Authored-By: <Model> <email>"
      ```
 
 ### 2.3 Commit Message 格式对齐（联动 `cliff.toml`）
