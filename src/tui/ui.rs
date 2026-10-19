@@ -176,13 +176,13 @@ fn render_encrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
     };
 
     let lines = vec![
-        Line::from("Use ↑/↓ to navigate fields, Enter to edit/toggle/execute, ←/→ to select encryption mode:"),
+        Line::from("↑/↓: Navigate | Enter: Edit/Toggle | Ctrl+O or 'f': File Browser | Tab (editing): Auto-Complete"),
         Line::from(""),
         field_line(
             0,
             "1. Input File:",
             if app.enc_input_path.is_empty() {
-                "<press Enter to type path>".into()
+                "<Enter to type, or press 'f' / Ctrl+O to browse files>".into()
             } else {
                 app.enc_input_path.clone()
             },
@@ -256,13 +256,13 @@ fn render_decrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
     };
 
     let form_lines = vec![
-        Line::from("Use ↑/↓ to navigate, Enter to edit/execute, ←/→ to choose private key:"),
+        Line::from("↑/↓: Navigate | Enter: Edit | 'f' or Ctrl+O: Browse | Tab (editing): Complete"),
         Line::from(""),
         field_line(
             0,
             "1. Encrypted File:",
             if app.dec_input_path.is_empty() {
-                "<press Enter to type .pubenc or .enc path>".into()
+                "<Enter to type, or press 'f' / Ctrl+O to browse .pubenc/.enc>".into()
             } else {
                 app.dec_input_path.clone()
             },
@@ -555,6 +555,99 @@ fn render_modal(frame: &mut Frame, app: &TuiApp) {
                 .wrap(Wrap { trim: false });
             frame.render_widget(block, area);
         }
+        ModalState::FileBrowser { target, current_dir, entries, selected_idx, show_hidden } => {
+            let fb_area = centered_rect(76, 72, frame.area());
+            frame.render_widget(Clear, fb_area);
+
+            let title_label = match target {
+                crate::tui::app::FileBrowserTarget::EncryptInput => "Select File to Encrypt",
+                crate::tui::app::FileBrowserTarget::EncryptOutput => {
+                    "Select Encryption Output Path"
+                }
+                crate::tui::app::FileBrowserTarget::DecryptInput => {
+                    "Select Encrypted File (.pubenc / .enc)"
+                }
+                crate::tui::app::FileBrowserTarget::DecryptOutput => {
+                    "Select Decryption Output Path"
+                }
+            };
+
+            let mut lines = vec![
+                Line::from(Span::styled(
+                    format!("  📂 Directory: {}", current_dir.display()),
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )),
+                Line::from(format!(
+                    "  [↑/↓] Move  [Enter] Open/Select  [Backspace/←] Parent  [.] Hidden: {}  [Esc] Cancel",
+                    if *show_hidden { "ON" } else { "OFF" }
+                )),
+                Line::from(""),
+            ];
+
+            let max_visible = fb_area.height.saturating_sub(6) as usize;
+            let visible_count = max_visible.max(5);
+            let start =
+                if *selected_idx >= visible_count { selected_idx + 1 - visible_count } else { 0 };
+            let end = (start + visible_count).min(entries.len());
+
+            if entries.is_empty() {
+                lines.push(Line::from("    (Empty directory)"));
+            } else {
+                for (i, entry) in entries.iter().enumerate().take(end).skip(start) {
+                    let is_sel = i == *selected_idx;
+                    let cursor = if is_sel { "▶ " } else { "  " };
+                    let icon = if entry.is_parent {
+                        "⬆️ "
+                    } else if entry.is_dir {
+                        "📁 "
+                    } else if entry.name.ends_with(".pubenc") {
+                        "🔒 "
+                    } else if entry.name.ends_with(".enc") {
+                        "🔐 "
+                    } else {
+                        "📄 "
+                    };
+                    let suffix = if entry.is_dir && !entry.is_parent {
+                        "/".to_string()
+                    } else if !entry.is_dir {
+                        format!("  ({})", format_bytes(entry.size))
+                    } else {
+                        String::new()
+                    };
+                    let style = if is_sel {
+                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                    } else if entry.is_dir {
+                        Style::default().fg(Color::Cyan)
+                    } else {
+                        Style::default()
+                    };
+                    lines.push(Line::from(Span::styled(
+                        format!("  {}{}{}{}", cursor, icon, entry.name, suffix),
+                        style,
+                    )));
+                }
+            }
+
+            let block = Paragraph::new(lines)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .style(Style::default().fg(Color::Cyan))
+                        .title(format!(" 🗂️  {} ({} items) ", title_label, entries.len())),
+                )
+                .wrap(Wrap { trim: false });
+            frame.render_widget(block, fb_area);
+        }
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KiB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.2} MiB", bytes as f64 / (1024.0 * 1024.0))
     }
 }
 
@@ -598,6 +691,9 @@ mod tests {
 
         app.modal =
             ModalState::NewKeypair { for_encrypt: false, auto_generate: false, focus_field: 1 };
+        terminal.draw(|f| render(f, &app)).unwrap();
+
+        app.open_file_browser(crate::tui::app::FileBrowserTarget::EncryptInput);
         terminal.draw(|f| render(f, &app)).unwrap();
     }
 }
