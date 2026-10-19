@@ -20,6 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.command {
         None | Some(Commands::Tui) => tui::run(),
+        Some(Commands::Inspect { file }) => cli::cmd_inspect_file(file),
+        Some(Commands::KeyList) => cli::cmd_key_list(),
         Some(Commands::GenPassword { length }) => cli::cmd_generate_strong_password(*length),
         Some(Commands::GenKeypair { name, email }) => cli::cmd_generate_protected_key(name, email),
         Some(Commands::DecryptPrivateKey { enc_path, out, force }) => {
@@ -34,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 *force,
             )
         }
-        Some(Commands::Encrypt { input, name, email, output, key, sign_key, force }) => {
+        Some(Commands::Encrypt { input, name, email, output, key, sign_key, symmetric, force }) => {
             cli::cmd_encrypt_workflow(
                 input,
                 name,
@@ -42,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 output.as_deref(),
                 key.as_deref(),
                 sign_key.as_deref(),
+                *symmetric,
                 *force,
             )
         }
@@ -51,13 +54,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             signer,
             require_signature,
+            symmetric,
             force,
         }) => cli::cmd_decrypt_workflow(
             input,
-            private_key,
+            private_key.as_deref(),
             output.as_deref(),
             signer.as_deref(),
             *require_signature,
+            *symmetric,
             *force,
         ),
     }

@@ -3,13 +3,14 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::path::{Path, PathBuf};
 use yacrypt_core::{
     constants::{MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH},
+    file_ops::{decrypt_file_symmetric, encrypt_file_symmetric},
     keystore::{
         generate_and_store_keys_in_dir, load_signing_key_with_password, scan_keystore, KeyringEntry,
     },
     password::generate_strong_password,
     workflow::{
         decrypt_workflow_with_password, encrypt_workflow_with_existing_key,
-        encrypt_workflow_with_new_keys, inspect_pubenc_file, PubencInfo,
+        encrypt_workflow_with_new_keys, inspect_file, InspectedFile,
     },
 };
 use zeroize::{Zeroize, Zeroizing};
@@ -54,7 +55,9 @@ impl ActiveTab {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PasswordAction {
     SignAndEncrypt,
+    SymmetricEncrypt,
     DecryptFile,
+    DecryptSymmetricFile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +69,7 @@ pub enum ModalState {
         auto_generate: bool,
         focus_field: usize, // 0: auto_generate toggle, 1: password, 2: confirm, 3: submit
     },
-    /// 单次口令输入弹窗（用于解密签名私钥或解密 .pubenc 文件）
+    /// 单次口令输入弹窗（用于解密签名私钥、对称加解密或解密 .pubenc 文件）
     PasswordPrompt {
         title: String,
         action: PasswordAction,
@@ -99,7 +102,7 @@ pub struct TuiApp {
     pub enc_editing: bool,
     pub enc_input_path: String,
     pub enc_output_path: String,
-    /// 0 表示 `<Generate New Keypair>`，1..=keyring.len() 表示复用对应本地密钥
+    /// 0: `<Generate New Keypair>`, 1: `<Symmetric Password Only (.enc)>`, 2..: existing keyring[choice - 2]
     pub enc_key_choice: usize,
     pub enc_sign_file: bool,
     pub enc_force: bool,
@@ -113,7 +116,7 @@ pub struct TuiApp {
     pub dec_signer_arg: String,
     pub dec_require_sig: bool,
     pub dec_force: bool,
-    pub dec_inspected: Option<Result<PubencInfo, String>>,
+    pub dec_inspected: Option<Result<InspectedFile, String>>,
     pub dec_last_verified_fp: Option<String>,
 
     // Password tab state
@@ -202,7 +205,7 @@ impl TuiApp {
                 if self.selected_key_idx >= self.keyring.len() && !self.keyring.is_empty() {
                     self.selected_key_idx = self.keyring.len() - 1;
                 }
-                if self.enc_key_choice > self.keyring.len() {
+                if self.enc_key_choice > self.keyring.len() + 1 {
                     self.enc_key_choice = 0;
                 }
                 if self.dec_key_idx >= self.keyring.len() {
@@ -222,14 +225,15 @@ impl TuiApp {
             return;
         }
         let path = Path::new(trimmed);
-        match inspect_pubenc_file(path) {
+        match inspect_file(path) {
             Ok(info) => {
-                // 如果文件内嵌了签名公钥指纹，且在本地密钥环中能找到对应指纹，自动选中该私钥！
-                if let Some(ref fp) = info.signer_fingerprint {
-                    if let Some(pos) =
-                        self.keyring.iter().position(|k| k.fingerprint.eq_ignore_ascii_case(fp))
-                    {
-                        self.dec_key_idx = pos;
+                if let InspectedFile::Pubenc(ref p) = info {
+                    if let Some(ref fp) = p.signer_fingerprint {
+                        if let Some(pos) =
+                            self.keyring.iter().position(|k| k.fingerprint.eq_ignore_ascii_case(fp))
+                        {
+                            self.dec_key_idx = pos;
+                        }
                     }
                 }
                 self.dec_inspected = Some(Ok(info));
@@ -250,7 +254,6 @@ impl TuiApp {
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) {
-        // Ctrl+C 任何时候直接安全清零并退出
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             self.clear_secret_buffers();
             self.clear_generated_password();
@@ -258,13 +261,11 @@ impl TuiApp {
             return;
         }
 
-        // 若当前处于模态弹窗状态，优先由弹窗处理按键
         if self.modal != ModalState::None {
             self.handle_modal_key(key);
             return;
         }
 
-        // 若处于文本框编辑模式，优先处理文本输入
         if self.active_tab == ActiveTab::Encrypt && self.enc_editing {
             self.handle_encrypt_edit_key(key);
             return;
@@ -274,7 +275,6 @@ impl TuiApp {
             return;
         }
 
-        // 全局导航快捷键
         match key.code {
             KeyCode::Char('q') => {
                 self.clear_secret_buffers();
@@ -367,6 +367,7 @@ impl TuiApp {
 
     fn handle_encrypt_key(&mut self, key: KeyEvent) {
         const FIELD_COUNT: usize = 6;
+        let total_modes = self.keyring.len() + 2;
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.enc_focus = (self.enc_focus + FIELD_COUNT - 1) % FIELD_COUNT;
@@ -375,12 +376,10 @@ impl TuiApp {
                 self.enc_focus = (self.enc_focus + 1) % FIELD_COUNT;
             }
             KeyCode::Left | KeyCode::Char('h') if self.enc_focus == 2 => {
-                let total = self.keyring.len() + 1;
-                self.enc_key_choice = (self.enc_key_choice + total - 1) % total;
+                self.enc_key_choice = (self.enc_key_choice + total_modes - 1) % total_modes;
             }
             KeyCode::Right | KeyCode::Char('l') if self.enc_focus == 2 => {
-                let total = self.keyring.len() + 1;
-                self.enc_key_choice = (self.enc_key_choice + 1) % total;
+                self.enc_key_choice = (self.enc_key_choice + 1) % total_modes;
             }
             KeyCode::Char(' ') => match self.enc_focus {
                 3 => self.enc_sign_file = !self.enc_sign_file,
@@ -390,8 +389,7 @@ impl TuiApp {
             KeyCode::Enter | KeyCode::Char('e') => match self.enc_focus {
                 0 | 1 => self.enc_editing = true,
                 2 => {
-                    let total = self.keyring.len() + 1;
-                    self.enc_key_choice = (self.enc_key_choice + 1) % total;
+                    self.enc_key_choice = (self.enc_key_choice + 1) % total_modes;
                 }
                 3 => self.enc_sign_file = !self.enc_sign_file,
                 4 => self.enc_force = !self.enc_force,
@@ -418,12 +416,17 @@ impl TuiApp {
         }
 
         if self.enc_key_choice == 0 {
-            // 新建密钥对并签名加密
             self.clear_secret_buffers();
             self.modal =
                 ModalState::NewKeypair { for_encrypt: true, auto_generate: false, focus_field: 1 };
+        } else if self.enc_key_choice == 1 {
+            self.clear_secret_buffers();
+            self.modal = ModalState::PasswordPrompt {
+                title: "Enter symmetric encryption password (>=12 chars)".into(),
+                action: PasswordAction::SymmetricEncrypt,
+            };
         } else {
-            let idx = self.enc_key_choice - 1;
+            let idx = self.enc_key_choice - 2;
             let Some(entry) = self.keyring.get(idx).cloned() else {
                 self.set_status(StatusKind::Error, "Selected keypair no longer exists.");
                 return;
@@ -558,16 +561,31 @@ impl TuiApp {
     fn trigger_decrypt_action(&mut self) {
         let input_trimmed = self.dec_input_path.trim();
         if input_trimmed.is_empty() {
-            self.set_status(StatusKind::Error, "Please enter an Encrypted File (.pubenc) path.");
+            self.set_status(
+                StatusKind::Error,
+                "Please enter an Encrypted File (.pubenc / .enc) path.",
+            );
             return;
         }
-        if !Path::new(input_trimmed).exists() {
+        let path = Path::new(input_trimmed);
+        if !path.exists() {
             self.set_status(
                 StatusKind::Error,
                 format!("Encrypted file not found: {}", input_trimmed),
             );
             return;
         }
+
+        // 若是 SGPGv1 对称加密文件，直接弹窗读取解密口令，免选私钥
+        if let Ok(InspectedFile::Sgpg(_)) = inspect_file(path) {
+            self.clear_secret_buffers();
+            self.modal = ModalState::PasswordPrompt {
+                title: "Enter password for symmetric SGPGv1 file".into(),
+                action: PasswordAction::DecryptSymmetricFile,
+            };
+            return;
+        }
+
         let Some(entry) = self.keyring.get(self.dec_key_idx).cloned() else {
             self.set_status(
                 StatusKind::Error,
@@ -807,8 +825,66 @@ impl TuiApp {
 
     fn execute_password_action(&mut self, action: PasswordAction, password: &str) {
         match action {
+            PasswordAction::SymmetricEncrypt => {
+                let input_path = PathBuf::from(self.enc_input_path.trim());
+                let out_opt = if self.enc_output_path.trim().is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(self.enc_output_path.trim()))
+                };
+                match encrypt_file_symmetric(
+                    &input_path,
+                    password,
+                    out_opt.as_deref(),
+                    self.enc_force,
+                ) {
+                    Ok(out_path) => {
+                        self.set_status(
+                            StatusKind::Success,
+                            format!(
+                                "✅ Symmetrically encrypted (SGPGv1) -> {}",
+                                out_path.display()
+                            ),
+                        );
+                    }
+                    Err(e) => {
+                        self.set_status(
+                            StatusKind::Error,
+                            format!("❌ Symmetric encryption failed: {}", e),
+                        );
+                    }
+                }
+            }
+            PasswordAction::DecryptSymmetricFile => {
+                let input_path = PathBuf::from(self.dec_input_path.trim());
+                let out_opt = if self.dec_output_path.trim().is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(self.dec_output_path.trim()))
+                };
+                match decrypt_file_symmetric(
+                    &input_path,
+                    password,
+                    out_opt.as_deref(),
+                    self.dec_force,
+                ) {
+                    Ok(out_path) => {
+                        self.dec_last_verified_fp = None;
+                        self.set_status(
+                            StatusKind::Success,
+                            format!("✅ Symmetric file decrypted -> {}", out_path.display()),
+                        );
+                    }
+                    Err(e) => {
+                        self.set_status(
+                            StatusKind::Error,
+                            format!("❌ Symmetric decryption failed: {}", e),
+                        );
+                    }
+                }
+            }
             PasswordAction::SignAndEncrypt => {
-                let idx = self.enc_key_choice.saturating_sub(1);
+                let idx = self.enc_key_choice.saturating_sub(2);
                 let Some(entry) = self.keyring.get(idx).cloned() else {
                     self.set_status(StatusKind::Error, "Keypair not found.");
                     return;
@@ -936,7 +1012,6 @@ mod tests {
 
         assert_eq!(app.active_tab, ActiveTab::Keyring);
 
-        // Press '4' -> switch to Password tab and generate a password
         app.handle_key_event(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::NONE));
         assert_eq!(app.active_tab, ActiveTab::Password);
 
@@ -944,12 +1019,10 @@ mod tests {
         assert!(app.generated_password.is_some());
         assert_eq!(app.generated_password.as_ref().unwrap().len(), 32);
 
-        // Switching away from Password tab MUST clear generated_password buffer
         app.handle_key_event(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         assert_eq!(app.active_tab, ActiveTab::Keyring);
         assert!(app.generated_password.is_none());
 
-        // Open NewKeypair modal ('n'), type into password_buf, then press Esc -> buffer MUST be cleared
         app.handle_key_event(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
         assert!(matches!(app.modal, ModalState::NewKeypair { .. }));
         app.handle_key_event(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE));

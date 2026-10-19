@@ -1,5 +1,9 @@
 /// 工作流模块
-use crate::crypto::{derive_symmetric_key_from_shared_secret, unpack_pubenc_blob, UnpackedPubenc};
+use crate::constants::{MAGIC, PUBENC_MAGIC};
+use crate::crypto::{
+    derive_symmetric_key_from_shared_secret, unpack_encrypted_blob, unpack_pubenc_blob,
+    UnpackedPubenc,
+};
 use crate::error::CryptError;
 use crate::file_ops::encrypt_file_with_key;
 use crate::keystore::{generate_and_store_keys_in_dir, GeneratedKeys};
@@ -14,13 +18,31 @@ use std::{
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 use zeroize::{Zeroize, Zeroizing};
 
-/// 免密解析 `.pubenc` 文件头部所得的元信息（供 TUI 实时预览与自动私钥匹配）
+/// 免密解析 `.pubenc` (`SCFv1`) 文件头部所得的元信息
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PubencInfo {
     pub has_signature: bool,
     pub signer_fingerprint: Option<String>,
     pub ephemeral_pub_hex: String,
     pub ciphertext_len: usize,
+}
+
+/// 免密解析 `SGPGv1`（对称加密文件 `.enc` 或加密私钥备份 `.asc.enc`）头部所得的元信息
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SgpgInfo {
+    pub blob_type: Option<String>,
+    pub fingerprint: Option<String>,
+    pub mem_kib: u32,
+    pub t_cost: u32,
+    pub p_cost: u32,
+    pub ciphertext_len: usize,
+}
+
+/// 通用文件免密自检结果（支持 `SCFv1` 与 `SGPGv1`）
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InspectedFile {
+    Pubenc(PubencInfo),
+    Sgpg(SgpgInfo),
 }
 
 /// 复用已有公钥加密的工作流返回结果
@@ -64,6 +86,44 @@ pub fn inspect_pubenc_file(path: &Path) -> Result<PubencInfo, CryptError> {
         ephemeral_pub_hex: hex::encode(pubenc.ephemeral_pub),
         ciphertext_len: pubenc.ciphertext.len(),
     })
+}
+
+/// 通用免密自检：自动识别 `SCFv1`（公钥混合加密文件）或 `SGPGv1`（口令对称加密文件 / 私钥备份）
+pub fn inspect_file(path: &Path) -> Result<InspectedFile, CryptError> {
+    if !path.exists() {
+        return Err(CryptError::Crypto(format!("File not found: {}", path.display())));
+    }
+    let mut f = File::open(path)?;
+    let mut data = Vec::new();
+    f.read_to_end(&mut data)?;
+
+    if data.starts_with(PUBENC_MAGIC) {
+        let pubenc = unpack_pubenc_blob(&data)?;
+        let signer_fingerprint =
+            pubenc.signature.as_ref().map(|sig| compute_fingerprint(&sig.verifying_key));
+        Ok(InspectedFile::Pubenc(PubencInfo {
+            has_signature: pubenc.signature.is_some(),
+            signer_fingerprint,
+            ephemeral_pub_hex: hex::encode(pubenc.ephemeral_pub),
+            ciphertext_len: pubenc.ciphertext.len(),
+        }))
+    } else if data.starts_with(MAGIC) {
+        let sgpg = unpack_encrypted_blob(&data)?;
+        let aad_map = parse_aad_map(&sgpg.aad)
+            .map_err(|e| CryptError::Format(format!("Invalid SGPGv1 AAD: {}", e)))?;
+        Ok(InspectedFile::Sgpg(SgpgInfo {
+            blob_type: aad_map.get("type").cloned(),
+            fingerprint: aad_map.get("fp").cloned(),
+            mem_kib: sgpg.mem_kib,
+            t_cost: sgpg.t_cost,
+            p_cost: sgpg.p_cost,
+            ciphertext_len: sgpg.ciphertext.len(),
+        }))
+    } else {
+        Err(CryptError::Format(
+            "Unrecognized file magic: expected SCFv1 (.pubenc) or SGPGv1 (.enc / .asc.enc)".into(),
+        ))
+    }
 }
 
 /// 使用已有公钥（及可选的已解密签名私钥）执行文件加密并写入 `.decrypt.txt` 说明
@@ -571,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn full_workflow_and_inspect_pubenc_roundtrip() {
+    fn full_workflow_and_inspect_file_roundtrip() {
         let dir = std::env::temp_dir().join(format!("yacrypt_wf_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -585,9 +645,26 @@ mod tests {
             encrypt_workflow_with_new_keys(&ks_dir, &input, Some(pw), None, false).unwrap();
         assert!(enc_out.encrypted_file.exists());
 
-        let info = inspect_pubenc_file(&enc_out.encrypted_file).unwrap();
-        assert!(info.has_signature);
-        assert_eq!(info.signer_fingerprint.as_deref(), Some(enc_out.keys.fingerprint.as_str()));
+        // Inspect SCFv1 .pubenc
+        match inspect_file(&enc_out.encrypted_file).unwrap() {
+            InspectedFile::Pubenc(info) => {
+                assert!(info.has_signature);
+                assert_eq!(
+                    info.signer_fingerprint.as_deref(),
+                    Some(enc_out.keys.fingerprint.as_str())
+                );
+            }
+            other => panic!("Expected Pubenc, got {:?}", other),
+        }
+
+        // Inspect SGPGv1 .asc.enc key backup
+        match inspect_file(&enc_out.keys.x25519_enc_path).unwrap() {
+            InspectedFile::Sgpg(info) => {
+                assert_eq!(info.blob_type.as_deref(), Some("x25519"));
+                assert_eq!(info.fingerprint.as_deref(), Some(enc_out.keys.fingerprint.as_str()));
+            }
+            other => panic!("Expected Sgpg, got {:?}", other),
+        }
 
         let dec_path = dir.join("doc_out.txt");
         let dec_out = decrypt_workflow_with_password(

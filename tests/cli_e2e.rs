@@ -223,8 +223,17 @@ fn run_with_pty(
     let mut transcript = String::new();
     let mut prompt_idx = 0;
     let mut buf = [0u8; 1024];
+    let start = std::time::Instant::now();
 
     loop {
+        if start.elapsed() > std::time::Duration::from_secs(20) {
+            let _ = child.kill();
+            panic!(
+                "run_with_pty timed out after 20s waiting for prompt {:?}; transcript so far:\n{}",
+                prompts_and_replies.get(prompt_idx),
+                transcript
+            );
+        }
         match master.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => {
@@ -515,6 +524,63 @@ fn cli_encrypt_failure_rolls_back_fresh_keypair() {
     assert!(out2.contains("rolled back"), "rollback note missing: {}", out2);
     let count2 = fs::read_dir(dir.join("keystore")).unwrap().count();
     assert_eq!(count2, count1, "fresh keypair files were not rolled back");
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn cli_inspect_key_list_and_symmetric_mode() {
+    let dir = std::env::temp_dir().join(format!("yacrypt_sym_inspect_e2e_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    // 1. Symmetric encrypt (-c)
+    fs::write(dir.join("notes.txt"), b"symmetric payload 2026").unwrap();
+    let sym_pw = "sym-pass-12345";
+    let (code_enc, sig_enc, out_enc) = run_with_pty(
+        &dir,
+        &["encrypt", "notes.txt", "-c"],
+        &[("Enter encryption password", sym_pw), ("Confirm password", sym_pw)],
+    );
+    assert_eq!(sig_enc, None);
+    assert_eq!(code_enc, 0, "symmetric encrypt failed: {}", out_enc);
+    assert!(dir.join("notes.txt.enc").exists());
+
+    // 2. Inspect symmetric file (passwordless)
+    let out_insp = Command::new(yacrypt_bin())
+        .current_dir(&dir)
+        .args(["inspect", "notes.txt.enc"])
+        .output()
+        .unwrap();
+    assert!(out_insp.status.success(), "inspect failed: {:?}", out_insp);
+    let insp_stdout = String::from_utf8_lossy(&out_insp.stdout);
+    assert!(insp_stdout.contains("SGPGv1 (Password-Based Encrypted Container)"));
+    assert!(insp_stdout.contains("Symmetric Password-Encrypted File (type=file)"));
+
+    // 3. Auto-detect symmetric decrypt via `yacrypt decrypt notes.txt.enc` (without --private-key)
+    let (code_dec, sig_dec, out_dec) = run_with_pty(
+        &dir,
+        &["decrypt", "notes.txt.enc", "-o", "notes_recovered.txt"],
+        &[("Enter decryption password", sym_pw)],
+    );
+    assert_eq!(sig_dec, None);
+    assert_eq!(code_dec, 0, "symmetric decrypt failed: {}", out_dec);
+    assert_eq!(fs::read(dir.join("notes_recovered.txt")).unwrap(), b"symmetric payload 2026");
+
+    // 4. Generate a keypair and verify `key-list` and `inspect` on a keystore file
+    let (code_kp, sig_kp, out_kp) = run_with_pty(
+        &dir,
+        &["gen-keypair", "Alice", "alice@example.com"],
+        &[("Auto-generate backup encryption password", "y")],
+    );
+    assert_eq!(sig_kp, None);
+    assert_eq!(code_kp, 0, "gen-keypair failed: {}", out_kp);
+
+    let out_kl = Command::new(yacrypt_bin()).current_dir(&dir).args(["key-list"]).output().unwrap();
+    assert!(out_kl.status.success(), "key-list failed: {:?}", out_kl);
+    let kl_stdout = String::from_utf8_lossy(&out_kl.stdout);
+    assert!(kl_stdout.contains("Local Keystore (1 keypair(s) found)"));
+    assert!(kl_stdout.contains("pub=✅ priv=✅"));
 
     let _ = fs::remove_dir_all(&dir);
 }
