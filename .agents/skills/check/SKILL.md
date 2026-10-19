@@ -11,15 +11,15 @@ Run the full pre-commit quality gate in strict sequence:
 
 1. **Formatting Check**:
    ```bash
-   cargo fmt -- --check
+   cargo fmt --all -- --check
    ```
 2. **Clippy Lint Check**:
    ```bash
-   cargo clippy --all-targets -- -D warnings
+   cargo clippy --workspace --all-targets -- -D warnings
    ```
 3. **Test Suite**:
    ```bash
-   cargo test
+   cargo test --workspace
    ```
 4. **Dependency & Vulnerability Audit**:
    ```bash

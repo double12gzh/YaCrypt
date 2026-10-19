@@ -11,9 +11,10 @@ Guide the user through encrypting a file with `yacrypt`:
 
 1. **Gather Parameters**:
    - Ask for the input file path to encrypt.
-   - Determine whether the user wants to generate a new keypair or use an existing X25519 public key:
+   - Determine which encryption mode the user wants:
      - **New keypair**: Ask for `name` (key owner metadata) and optional `email` (defaults to `secure@example.com`).
-     - **Existing key**: Ask for the X25519 public key file path (`--key`).
+     - **Existing key**: Ask for the X25519 public key file path (`--key`, or inspect local keys with `cargo run -- key-list`) and optional signing key (`--sign-key`).
+     - **Symmetric password-only (`-c / --symmetric`)**: No public/private keys needed; encrypts directly into `<input>.enc` (`SGPGv1`).
 2. **Execute Encryption**:
    - With a new keypair:
      ```bash
@@ -21,8 +22,12 @@ Guide the user through encrypting a file with `yacrypt`:
      ```
    - With an existing X25519 public key:
      ```bash
-     cargo run -- encrypt <input_file> --key <public_key_path>
+     cargo run -- encrypt <input_file> --key <public_key_path> [--sign-key <signing_key_path>]
+     ```
+   - With symmetric password-only mode:
+     ```bash
+     cargo run -- encrypt <input_file> -c
      ```
 3. **Confirm Output**:
-   - Verify the `.pubenc` encrypted output file and `keystore/` files (if newly generated).
+   - Verify the `.pubenc` or `.enc` encrypted output file and `keystore/` files (if newly generated).
    - Provide the exact `decrypt` command the recipient will need to decrypt the file.

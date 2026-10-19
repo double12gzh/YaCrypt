@@ -4,13 +4,14 @@
 
 ## 简介
 
-`YaCrypt` 是一个安全的文件加密/解密命令行工具，基于现代密码学原语构建。
+`YaCrypt` 是一个安全的文件加密/解密命令行工具与交互式终端工作台（TUI），基于现代密码学原语构建，采用 `yacrypt-core`（纯数据驱动核心库）+ `yacrypt`（CLI & Ratatui TUI 双前端）架构。
 
 **技术栈：**
 - **密钥派生**: Argon2id (抗 GPU/ASIC)
 - **对称加密**: XChaCha20-Poly1305 (AEAD, 24 字节 nonce)
 - **密钥交换**: X25519 ECDH + HKDF-SHA256
 - **数字签名**: Ed25519
+- **交互前端**: Clap CLI + Ratatui / Crossterm TUI
 - **内存保护**: zeroize + mlockall (Linux)
 
 ## 系统要求
@@ -36,6 +37,24 @@ target/release/yacrypt
 ```bash
 cargo install --path .
 ```
+
+---
+
+## 交互式 TUI 工作台（4 合 1）
+
+直接运行无参数 `yacrypt`（或 `yacrypt tui`）即可进入全屏交互式终端工作台：
+
+```bash
+yacrypt
+# 或
+yacrypt tui
+```
+
+包含 4 个核心工作视图（支持数字键 `1`-`4` 或 `Tab` / `Shift+Tab` 切换，`q` / `Esc` 安全退出并擦除口令缓冲）：
+- **`[1] Keyring`**：自动扫描 `keystore/` 目录，展示所有密钥对指纹、Ed25519/X25519 公私钥完备状态；按 `g` 弹窗生成新密钥对，按 `x` 导出解密后的 Ed25519 私钥 DER。
+- **`[2] Encrypt`**：支持 **自动生成新密钥对并签名加密**、**选择已有公钥加密（可选签名）** 以及 **纯口令对称加密（`.enc` / `SGPGv1`）** 三种模式。
+- **`[3] Decrypt & Verify`**：输入路径后实时调用免口令密文头透视（自动识别 `.pubenc` 或 `.enc`），自动匹配本地私钥与签名者指纹信任锚，解密前强制完成验签。
+- **`[4] Password Gen`**：实时调节口令长度（`←` / `→`），按 `Enter` / `r` 基于拒绝采样生成无模偏差的高熵随机口令。
 
 ---
 
@@ -89,9 +108,17 @@ yacrypt decrypt secret.pubenc \
 
 ## 所有命令
 
-### 1. `encrypt` — 加密文件（推荐）
+### 1. `tui`（或无参数运行）— 启动交互式终端工作台
 
-一键完成：生成密钥对 → 加密密钥 → 签名 → 加密文件：
+```bash
+yacrypt
+# 或
+yacrypt tui
+```
+
+### 2. `encrypt` — 加密文件（推荐）
+
+一键完成：生成密钥对 → 加密密钥 → 签名 → 加密文件（输出 `<file>.pubenc`）：
 
 ```bash
 yacrypt encrypt <file> [name] [email] [--output <out>] [--force]
@@ -103,9 +130,15 @@ yacrypt encrypt <file> [name] [email] [--output <out>] [--force]
 yacrypt encrypt <file> --key keystore/x25519_public_<fingerprint>.asc [--sign-key keystore/private_<signer_fp>.asc.enc] [--force]
 ```
 
-### 2. `decrypt` — 解密文件（推荐）
+使用纯口令对称加密（`SGPGv1` 格式，无需公私钥，默认输出 `<file>.enc`）：
 
-解密私钥 → 解密文件 → 验证签名与签名者指纹信任锚：
+```bash
+yacrypt encrypt <file> -c [--output <out.enc>] [--force]
+```
+
+### 3. `decrypt` — 解密文件（推荐）
+
+解密公钥混合加密文件（`.pubenc`：解密私钥 → 解密文件 → 验证签名与签名者指纹信任锚）：
 
 ```bash
 yacrypt decrypt <file.pubenc> \
@@ -116,7 +149,31 @@ yacrypt decrypt <file.pubenc> \
     [--force]
 ```
 
-### 3. `gen-keypair` — 生成密钥对
+解密纯口令对称加密文件（`.enc`：自动检测 `SGPGv1` 头部，无需 `--private-key`）：
+
+```bash
+yacrypt decrypt <file.enc> [-o <out>] [--force]
+```
+
+### 4. `inspect` — 免口令透视加密文件或密钥备份
+
+免口令解析 `.pubenc`（`SCFv1`）或 `.enc` / `.asc.enc`（`SGPGv1`）头部元数据、算法套件、Argon2id 参数及内嵌签名者指纹，并自动比对本地 `keystore/`：
+
+```bash
+yacrypt inspect <file.pubenc | file.enc | keystore/private_*.asc.enc>
+```
+
+### 5. `key-list`（别名 `keys`）— 列出本地密钥环
+
+扫描并展示本地 `keystore/` 目录下所有密钥对指纹及 Ed25519 / X25519 公私钥文件状态：
+
+```bash
+yacrypt key-list
+# 或
+yacrypt keys
+```
+
+### 6. `gen-keypair` — 生成密钥对
 
 ```bash
 yacrypt gen-keypair "Your Name" "your.email@example.com"
@@ -132,7 +189,7 @@ yacrypt gen-keypair "Your Name" "your.email@example.com"
 | `keystore/x25519_private_<fp>.asc.enc` | 加密的 X25519 私钥 |
 | `keystore/recovery_instructions_<fp>.txt` | 恢复说明（含解密命令） |
 
-### 4. `gen-password` — 生成强密码
+### 7. `gen-password` — 生成强密码
 
 ```bash
 yacrypt gen-password [--length 32]
@@ -140,7 +197,7 @@ yacrypt gen-password [--length 32]
 
 生成指定长度的随机密码（默认 32 字符），使用拒绝采样消除模偏差。
 
-### 5. `encrypt-file-with-key` — 使用已有公钥直接加密
+### 8. `encrypt-file-with-key` — 使用已有公钥直接加密
 
 ```bash
 yacrypt encrypt-file-with-key \
@@ -151,7 +208,7 @@ yacrypt encrypt-file-with-key \
     [--force]
 ```
 
-### 6. `decrypt-private-key` — 导出原始 Ed25519 私钥
+### 9. `decrypt-private-key` — 导出原始 Ed25519 私钥
 
 ```bash
 yacrypt decrypt-private-key keystore/private_<fp>.asc.enc [-o output.der] [--force]
@@ -161,9 +218,9 @@ yacrypt decrypt-private-key keystore/private_<fp>.asc.enc [-o output.der] [--for
 
 ## 安全设计
 
-- 加密文件（`.pubenc`）与私钥备份（`.asc.enc`）均包含独立 magic header + 版本号，防止格式混淆
-- AAD 仅绑定协议必需的安全关键字段（`flags`、临时公钥 `ephemeral_pub`、签名公钥 `sig_vk`、密钥指纹 `fp`、密钥类型 `type`），任何头部篡改或签名剥离均导致 AEAD 解密认证失败；AAD 不携带任何文件名/身份元数据（含其摘要——低熵摘要可被字典还原，已整体移除，2026-10-18 复审 M-3 收口）
+- 加密文件（`.pubenc`）与口令加密容器（`.enc` / `.asc.enc`）均包含独立 magic header + 版本号，并通过 AAD `type` 字段（`type=file`、`type=ed25519`、`type=x25519`）严格做密码学域分离，防止格式或用途混淆
+- AAD 仅绑定协议必需的安全关键字段（`flags`、临时公钥 `ephemeral_pub`、签名公钥 `sig_vk`、密钥指纹 `fp`、载荷类型 `type`），任何头部篡改或签名剥离均导致 AEAD 解密认证失败；AAD 不携带任何文件名/身份元数据（含其摘要——低熵摘要可被字典还原，已整体移除，2026-10-18 复审 M-3 收口）
 - Ed25519 签名验证与签名者指纹信任锚核验在写入磁盘**之前**执行，验证失败或签名者指纹不匹配则立即中止并拒绝输出任何数据
-- 所有敏感内存在使用后立即通过 `zeroize` 清零
+- 所有敏感内存在使用后立即通过 `zeroize` 清零（含 TUI 口令输入缓冲与 CLI 临时口令）
 - 输出与私钥文件默认使用 `create_new` + `O_NOFOLLOW` + `0o600` 权限写入，拒绝跟随符号链接、非普通文件与静默覆盖既有文件
 - 跨不可信渠道接收文件时，建议使用 `--require-signature` 强制要求签名，并用 `--signer <指纹>` 固定预期签名者

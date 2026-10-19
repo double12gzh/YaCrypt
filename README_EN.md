@@ -4,13 +4,14 @@
 
 ## Introduction
 
-`YaCrypt` is a secure file encryption/decryption CLI tool built with modern cryptographic primitives.
+`YaCrypt` is a secure file encryption/decryption CLI tool and interactive terminal workbench (TUI) built with modern cryptographic primitives, structured as a `yacrypt-core` (pure data-driven cryptographic library) + `yacrypt` (CLI & Ratatui TUI dual frontend) Cargo workspace.
 
 **Tech Stack:**
 - **Key Derivation**: Argon2id (GPU/ASIC resistant)
 - **Symmetric Encryption**: XChaCha20-Poly1305 (AEAD, 24-byte nonce)
 - **Key Exchange**: X25519 ECDH + HKDF-SHA256
 - **Digital Signature**: Ed25519
+- **Interactive Frontends**: Clap CLI + Ratatui / Crossterm TUI
 - **Memory Protection**: zeroize + mlockall (Linux)
 
 ## Requirements
@@ -36,6 +37,24 @@ target/release/yacrypt
 ```bash
 cargo install --path .
 ```
+
+---
+
+## Interactive TUI Workbench (4-in-1)
+
+Run `yacrypt` without arguments (or `yacrypt tui`) to launch the full-screen interactive terminal workbench:
+
+```bash
+yacrypt
+# or
+yacrypt tui
+```
+
+Includes 4 integrated views (switch with `1`-`4` or `Tab` / `Shift+Tab`, quit safely and zeroize password buffers with `q` / `Esc`):
+- **`[1] Keyring`**: Automatically scans `keystore/`, displaying all keypair fingerprints and Ed25519/X25519 key completeness; press `g` to generate a new keypair in a modal, or `x` to export a decrypted Ed25519 private key as PKCS#8 DER.
+- **`[2] Encrypt`**: Supports **generating a new keypair & signing**, **encrypting with an existing public key (optional signing)**, and **symmetric password-only encryption (`.enc` / `SGPGv1`)**.
+- **`[3] Decrypt & Verify`**: Automatically inspects `.pubenc` (`SCFv1`) or `.enc` (`SGPGv1`) headers without a password as you type, matches local private keys and signer trust anchors, and enforces signature verification prior to writing output.
+- **`[4] Password Gen`**: Adjust password length in real time (`←` / `→`) and press `Enter` / `r` to generate rejection-sampled high-entropy passwords without modulo bias.
 
 ---
 
@@ -89,9 +108,17 @@ Enter the backup password generated (or set) during encryption to decrypt and au
 
 ## All Commands
 
-### 1. `encrypt` — Encrypt a File (Recommended)
+### 1. `tui` (or run with no arguments) — Launch Interactive Terminal Workbench
 
-One-click: Generate keypair → Encrypt keys → Sign → Encrypt file:
+```bash
+yacrypt
+# or
+yacrypt tui
+```
+
+### 2. `encrypt` — Encrypt a File (Recommended)
+
+One-click: Generate keypair → Encrypt keys → Sign → Encrypt file (outputs `<file>.pubenc`):
 
 ```bash
 yacrypt encrypt <file> [name] [email] [--output <out>] [--force]
@@ -103,9 +130,15 @@ Encrypt with an existing key (skip key generation, optionally sign with `--sign-
 yacrypt encrypt <file> --key keystore/x25519_public_<fingerprint>.asc [--sign-key keystore/private_<signer_fp>.asc.enc] [--force]
 ```
 
-### 2. `decrypt` — Decrypt a File (Recommended)
+Encrypt directly with a password in symmetric mode (`SGPGv1` format, no public/private keys needed, outputs `<file>.enc` by default):
 
-Decrypt key → Decrypt file → Verify signature & signer fingerprint trust anchor:
+```bash
+yacrypt encrypt <file> -c [--output <out.enc>] [--force]
+```
+
+### 3. `decrypt` — Decrypt a File (Recommended)
+
+Decrypt hybrid public-key encrypted file (`.pubenc`: Decrypt key → Decrypt file → Verify signature & signer fingerprint trust anchor):
 
 ```bash
 yacrypt decrypt <file.pubenc> \
@@ -116,7 +149,31 @@ yacrypt decrypt <file.pubenc> \
     [--force]
 ```
 
-### 3. `gen-keypair` — Generate Keypair
+Decrypt symmetric password-encrypted file (`.enc`: auto-detects `SGPGv1` header without `--private-key`):
+
+```bash
+yacrypt decrypt <file.enc> [-o <out>] [--force]
+```
+
+### 4. `inspect` — Inspect Encrypted File or Key Backup Without a Password
+
+Inspect `.pubenc` (`SCFv1`) or `.enc` / `.asc.enc` (`SGPGv1`) header metadata, algorithm suite, Argon2id parameters, and embedded signer fingerprint without a password, cross-referencing local `keystore/`:
+
+```bash
+yacrypt inspect <file.pubenc | file.enc | keystore/private_*.asc.enc>
+```
+
+### 5. `key-list` (alias `keys`) — List Local Keyring
+
+Scan and display all keypair fingerprints and Ed25519 / X25519 key file statuses in `keystore/`:
+
+```bash
+yacrypt key-list
+# or
+yacrypt keys
+```
+
+### 6. `gen-keypair` — Generate Keypair
 
 ```bash
 yacrypt gen-keypair "Your Name" "your.email@example.com"
@@ -132,7 +189,7 @@ Generated files:
 | `keystore/x25519_private_<fp>.asc.enc` | Encrypted X25519 private key |
 | `keystore/recovery_instructions_<fp>.txt` | Recovery instructions (with decryption commands) |
 
-### 4. `gen-password` — Generate Strong Password
+### 7. `gen-password` — Generate Strong Password
 
 ```bash
 yacrypt gen-password [--length 32]
@@ -140,7 +197,7 @@ yacrypt gen-password [--length 32]
 
 Generate a random password of specified length (default 32 characters) using rejection sampling to eliminate modulo bias.
 
-### 5. `encrypt-file-with-key` — Encrypt with Existing Public Key
+### 8. `encrypt-file-with-key` — Encrypt with Existing Public Key
 
 ```bash
 yacrypt encrypt-file-with-key \
@@ -151,7 +208,7 @@ yacrypt encrypt-file-with-key \
     [--force]
 ```
 
-### 6. `decrypt-private-key` — Export Raw Ed25519 Private Key
+### 9. `decrypt-private-key` — Export Raw Ed25519 Private Key
 
 ```bash
 yacrypt decrypt-private-key keystore/private_<fp>.asc.enc [-o output.der] [--force]
@@ -161,9 +218,9 @@ yacrypt decrypt-private-key keystore/private_<fp>.asc.enc [-o output.der] [--for
 
 ## Security Design
 
-- Encrypted files (`.pubenc`) and encrypted key backups (`.asc.enc`) contain distinct magic headers + version numbers to prevent format confusion
-- The AAD binds only protocol-critical fields (`flags`, ephemeral public key `ephemeral_pub`, signing public key `sig_vk`, key fingerprint `fp`, key `type`); any header tampering or signature stripping causes AEAD authentication failure. The AAD carries no filename/identity metadata (not even low-entropy digests, which are dictionary-recoverable — removed entirely in the 2026-10-18 review closure)
+- Encrypted files (`.pubenc`) and password-based containers (`.enc` / `.asc.enc`) contain distinct magic headers + version numbers and enforce cryptographic domain separation via the AAD `type` field (`type=file`, `type=ed25519`, `type=x25519`) to prevent format or key-role confusion
+- The AAD binds only protocol-critical fields (`flags`, ephemeral public key `ephemeral_pub`, signing public key `sig_vk`, key fingerprint `fp`, payload `type`); any header tampering or signature stripping causes AEAD authentication failure. The AAD carries no filename/identity metadata (not even low-entropy digests, which are dictionary-recoverable — removed entirely in the 2026-10-18 review closure)
 - Ed25519 signature verification and signer fingerprint trust anchor matching are performed **before** writing the file; output is rejected if verification fails or the signer is untrusted
-- All sensitive memory is zeroized immediately after use
+- All sensitive memory is zeroized immediately after use (including TUI password input buffers and temporary CLI passwords)
 - Output and private key files are written using `create_new` + `O_NOFOLLOW` + `0o600` permissions by default, refusing to follow symlinks, write to non-regular files, or silently overwrite existing files
 - When receiving files over untrusted channels, prefer `--require-signature` together with `--signer <fingerprint>` to pin the expected signer
