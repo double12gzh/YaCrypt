@@ -51,10 +51,10 @@ yacrypt tui
 ```
 
 Includes 4 integrated views (switch with `1`-`4` or `Tab` / `Shift+Tab`, quit safely and zeroize password buffers with `q` / `Esc`):
-- **`[1] Keyring`**: Automatically scans `keystore/`, displaying all keypair fingerprints and Ed25519/X25519 key completeness; press `g` to generate a new keypair in a modal, or `x` to export a decrypted Ed25519 private key as PKCS#8 DER.
-- **`[2] Encrypt`**: Supports **generating a new keypair & signing**, **encrypting with an existing public key (optional signing)**, and **symmetric password-only encryption (`.enc` / `SGPGv1`)**.
-- **`[3] Decrypt & Verify`**: Automatically inspects `.pubenc` (`SCFv1`) or `.enc` (`SGPGv1`) headers without a password as you type, matches local private keys and signer trust anchors, and enforces signature verification prior to writing output.
-- **`[4] Password Gen`**: Adjust password length in real time (`←` / `→`) and press `Enter` / `r` to generate rejection-sampled high-entropy passwords without modulo bias.
+- **`[1] Keyring`**: Automatically scans `keystore/`, displaying all keypair fingerprints and Ed25519/X25519 key completeness; press `n` / `Enter` to generate a new keypair in a modal, or `r` to refresh.
+- **`[2] Encrypt`**: Supports **generating a new keypair & signing**, **encrypting with an existing public key (optional signing)**, and **symmetric password-only encryption (`.enc` / `SGPGv1`)**; press `f` / `Ctrl+O` on path fields to open the built-in File Browser modal, or `Tab` while editing for path auto-completion.
+- **`[3] Decrypt & Verify`**: Automatically inspects `.pubenc` (`SCFv1`) or `.enc` (`SGPGv1`) headers without a password as you type or select via `f` / `Ctrl+O`, matches local private keys and signer trust anchors, and enforces signature verification prior to writing output.
+- **`[4] Password Gen`**: Adjust password length in real time (`←` / `→`) and press `Enter` / `g` to generate rejection-sampled high-entropy passwords without modulo bias.
 
 ---
 
