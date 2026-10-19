@@ -7,6 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
     Frame,
 };
+use yacrypt_core::workflow::InspectedFile;
 
 pub fn render(frame: &mut Frame, app: &TuiApp) {
     let chunks = Layout::default()
@@ -138,7 +139,9 @@ fn render_keyring_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
 fn render_encrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
     let key_label = if app.enc_key_choice == 0 {
         "<✨ Generate Fresh Ed25519 + X25519 Keypair>".to_string()
-    } else if let Some(k) = app.keyring.get(app.enc_key_choice - 1) {
+    } else if app.enc_key_choice == 1 {
+        "<🔐 Symmetric Password Only (.enc / SGPGv1)>".to_string()
+    } else if let Some(k) = app.keyring.get(app.enc_key_choice - 2) {
         format!("🔑 Existing Keypair: {}", k.short_fingerprint())
     } else {
         "<None>".to_string()
@@ -164,8 +167,16 @@ fn render_encrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
         Line::from(Span::styled(format!("{}{:<28} {}", marker, label, value), style))
     };
 
+    let sig_desc = if app.enc_key_choice == 1 {
+        "N/A (Symmetric Argon2id + XChaCha20-Poly1305 AEAD)".to_string()
+    } else if app.enc_key_choice == 0 || app.enc_sign_file {
+        "[x] Yes (Authenticated & Signed)".to_string()
+    } else {
+        "[ ] No (X25519 AEAD only)".to_string()
+    };
+
     let lines = vec![
-        Line::from("Use ↑/↓ to navigate fields, Enter to edit/toggle/execute, ←/→ to select key:"),
+        Line::from("Use ↑/↓ to navigate fields, Enter to edit/toggle/execute, ←/→ to select encryption mode:"),
         Line::from(""),
         field_line(
             0,
@@ -180,21 +191,17 @@ fn render_encrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
             1,
             "2. Output File (optional):",
             if app.enc_output_path.is_empty() {
-                "<default: input.pubenc>".into()
+                if app.enc_key_choice == 1 {
+                    "<default: input.enc>".into()
+                } else {
+                    "<default: input.pubenc>".into()
+                }
             } else {
                 app.enc_output_path.clone()
             },
         ),
-        field_line(2, "3. Recipient Key (←/→):", key_label),
-        field_line(
-            3,
-            "4. Embed Ed25519 Signature:",
-            if app.enc_key_choice == 0 || app.enc_sign_file {
-                "[x] Yes (Authenticated & Signed)".into()
-            } else {
-                "[ ] No (X25519 AEAD only)".into()
-            },
-        ),
+        field_line(2, "3. Encryption Mode (←/→):", key_label),
+        field_line(3, "4. Embed Ed25519 Signature:", sig_desc),
         field_line(
             4,
             "5. Overwrite (--force):",
@@ -208,7 +215,7 @@ fn render_encrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Hybrid File Encryption (X25519 + XChaCha20-Poly1305 + Ed25519) "),
+                .title(" File Encryption (Hybrid X25519+Ed25519 or Symmetric Argon2id) "),
         )
         .wrap(Wrap { trim: false });
     frame.render_widget(panel, area);
@@ -220,7 +227,9 @@ fn render_decrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
         .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
         .split(area);
 
-    let key_label = if let Some(k) = app.keyring.get(app.dec_key_idx) {
+    let key_label = if matches!(app.dec_inspected, Some(Ok(InspectedFile::Sgpg(_)))) {
+        "<N/A — Symmetric SGPGv1 (Password Only)>".to_string()
+    } else if let Some(k) = app.keyring.get(app.dec_key_idx) {
         format!("🔑 {}", k.short_fingerprint())
     } else {
         "<No Keypair in keystore/>".to_string()
@@ -253,7 +262,7 @@ fn render_decrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
             0,
             "1. Encrypted File:",
             if app.dec_input_path.is_empty() {
-                "<press Enter to type .pubenc path>".into()
+                "<press Enter to type .pubenc or .enc path>".into()
             } else {
                 app.dec_input_path.clone()
             },
@@ -262,7 +271,7 @@ fn render_decrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
             1,
             "2. Output File (opt):",
             if app.dec_output_path.is_empty() {
-                "<default: strip .pubenc>".into()
+                "<default: strip .pubenc / .enc>".into()
             } else {
                 app.dec_output_path.clone()
             },
@@ -288,7 +297,7 @@ fn render_decrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
             if app.dec_force { "[x] Yes".into() } else { "[ ] No".into() },
         ),
         Line::from(""),
-        field_line(6, "Action:", "[ 🔓 Decrypt & Verify Signature ]".into()),
+        field_line(6, "Action:", "[ 🔓 Decrypt & Verify ]".into()),
     ];
 
     let form = Paragraph::new(form_lines)
@@ -301,14 +310,17 @@ fn render_decrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
     frame.render_widget(form, cols[0]);
 
     let mut inspect_lines = vec![Line::from(Span::styled(
-        "SCFv1 (.pubenc) Header Inspector:",
+        "Universal File Header Inspector:",
         Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
     ))];
     match &app.dec_inspected {
         None => {
-            inspect_lines.push(Line::from("  Enter an encrypted file path on the left to inspect its header without a password."));
+            inspect_lines.push(Line::from(
+                "  Enter a .pubenc or .enc file path on the left to inspect its header without a password.",
+            ));
         }
-        Some(Ok(info)) => {
+        Some(Ok(InspectedFile::Pubenc(info))) => {
+            inspect_lines.push(Line::from("  • Container Format:   SCFv1 (Hybrid Public-Key)"));
             inspect_lines.push(Line::from(format!(
                 "  • Embedded Signature: {}",
                 if info.has_signature { "✅ Present (Ed25519)" } else { "⚠️ None (Unsigned)" }
@@ -320,6 +332,24 @@ fn render_decrypt_tab(frame: &mut Frame, app: &TuiApp, area: Rect) {
                 "  • Ephemeral X25519:   {}…",
                 &info.ephemeral_pub_hex[..24]
             )));
+            inspect_lines
+                .push(Line::from(format!("  • Ciphertext Size:    {} bytes", info.ciphertext_len)));
+        }
+        Some(Ok(InspectedFile::Sgpg(info))) => {
+            inspect_lines.push(Line::from("  • Container Format:   SGPGv1 (Password-Protected)"));
+            inspect_lines.push(Line::from(format!(
+                "  • Payload Type:       {}",
+                info.blob_type.as_deref().unwrap_or("unknown")
+            )));
+            inspect_lines.push(Line::from(format!(
+                "  • Argon2id Params:    {} MiB, t={}, p={}",
+                info.mem_kib / 1024,
+                info.t_cost,
+                info.p_cost
+            )));
+            if let Some(ref fp) = info.fingerprint {
+                inspect_lines.push(Line::from(format!("  • Bound Fingerprint:  {}", fp)));
+            }
             inspect_lines
                 .push(Line::from(format!("  • Ciphertext Size:    {} bytes", info.ciphertext_len)));
         }

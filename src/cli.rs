@@ -4,15 +4,15 @@ use dialoguer::{Confirm, Password};
 use std::path::{Path, PathBuf};
 use yacrypt_core::{
     constants::{MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH},
-    file_ops::encrypt_file_with_key,
+    file_ops::{decrypt_file_symmetric, encrypt_file_symmetric, encrypt_file_with_key},
     keystore::{
         decrypt_backup_with_password, generate_and_store_keys_in_dir,
-        load_signing_key_with_password, GeneratedKeys,
+        load_signing_key_with_password, scan_keystore, GeneratedKeys,
     },
     password::generate_strong_password,
     workflow::{
         decrypt_workflow_with_password, encrypt_workflow_with_existing_key,
-        encrypt_workflow_with_new_keys, resolve_signer_fingerprint,
+        encrypt_workflow_with_new_keys, inspect_file, resolve_signer_fingerprint, InspectedFile,
     },
 };
 use zeroize::Zeroizing;
@@ -28,6 +28,14 @@ pub struct Cli {
 pub enum Commands {
     /// Launch interactive 4-in-1 TUI workbench (default when no subcommand is given)
     Tui,
+    /// Inspect an encrypted file (.pubenc, .enc, or .asc.enc) without a password
+    Inspect {
+        /// Path to the encrypted file or key backup to inspect
+        file: PathBuf,
+    },
+    /// List all Ed25519 + X25519 keypairs stored in the local keystore/ directory
+    #[command(visible_alias = "keys")]
+    KeyList,
     /// Generate a new Ed25519 and X25519 keypair with encrypted private key backup
     GenKeypair {
         /// human name
@@ -69,18 +77,17 @@ pub enum Commands {
         #[arg(short, long)]
         force: bool,
     },
-    /// Encrypt file: generate keypair (or reuse existing), encrypt keys, encrypt file, sign file.
-    /// By default generates a new keypair. Use --key to reuse an existing keypair.
+    /// Encrypt file: generate keypair (or reuse existing via --key, or use password-only via --symmetric).
     Encrypt {
         /// Input file to encrypt
         input: PathBuf,
-        /// Human name for the keypair (used in metadata, ignored if --key is specified)
+        /// Human name for the keypair (used in metadata, ignored if --key or --symmetric is specified)
         #[arg(default_value = "user")]
         name: String,
-        /// Email (used in metadata, ignored if --key is specified)
+        /// Email (used in metadata, ignored if --key or --symmetric is specified)
         #[arg(default_value = "secure@example.com")]
         email: String,
-        /// Output encrypted file (default: input with .pubenc extension)
+        /// Output encrypted file (default: <input>.pubenc, or <input>.enc when --symmetric is used)
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Reuse existing X25519 public key file instead of generating a new keypair.
@@ -90,29 +97,32 @@ pub enum Commands {
         /// Optional encrypted Ed25519 private key file (from keystore/private_*.asc.enc) to sign when using --key
         #[arg(long)]
         sign_key: Option<PathBuf>,
+        /// Encrypt directly with a password (Argon2id + XChaCha20-Poly1305, SGPGv1 format) without public/private keys
+        #[arg(short = 'c', long)]
+        symmetric: bool,
         /// Overwrite output file if it already exists
         #[arg(short, long)]
         force: bool,
     },
-    /// Decrypt file: decrypt key, decrypt file, verify signature and signer identity.
-    /// This command decrypts the private key, decrypts the encrypted file, and verifies
-    /// the file signature against the expected signer fingerprint before writing to disk.
+    /// Decrypt file: supports both .pubenc (hybrid public-key) and .enc (symmetric password-encrypted) files.
     Decrypt {
-        /// Input encrypted file to decrypt (usually with .pubenc extension)
+        /// Input encrypted file to decrypt (.pubenc or .enc)
         input: PathBuf,
-        /// Encrypted X25519 private key file (from keystore/x25519_private_*.asc.enc)
+        /// Encrypted X25519 private key file (required for .pubenc files, omitted for --symmetric / .enc files)
         #[arg(short, long)]
-        private_key: PathBuf,
-        /// Output decrypted file (default: input without .pubenc extension)
+        private_key: Option<PathBuf>,
+        /// Output decrypted file (default: input without .pubenc / .enc extension)
         #[arg(short, long)]
         output: Option<PathBuf>,
         /// Expected signer Ed25519 fingerprint (64 hex chars) or public key file (keystore/public_*.asc).
-        /// Defaults to the fingerprint bound to the recipient's keypair.
         #[arg(short, long)]
         signer: Option<String>,
         /// Require the encrypted file to carry a valid Ed25519 signature
         #[arg(long)]
         require_signature: bool,
+        /// Force symmetric password decryption mode (auto-detected for SGPGv1 .enc files)
+        #[arg(short = 'c', long)]
+        symmetric: bool,
         /// Overwrite output file if it already exists
         #[arg(short, long)]
         force: bool,
@@ -168,6 +178,92 @@ fn print_generated_keys_notice(keys: &GeneratedKeys, name: &str, email: &str) {
         println!("   ⚠️  IMPORTANT: Save this password securely! You will need it to decrypt your private key backup.");
     }
     println!("👤 Key owner: {} <{}> (not stored in any file — keep your own record)", name, email);
+}
+
+pub fn cmd_inspect_file(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let info = inspect_file(path)?;
+    let keyring = scan_keystore(Path::new("keystore")).unwrap_or_default();
+
+    println!("🔍 File Inspection: {}", path.display());
+    println!("========================================");
+    match info {
+        InspectedFile::Pubenc(p) => {
+            println!("Format:             SCFv1 (Hybrid Public-Key Encrypted File)");
+            println!("Algorithm Suite:    X25519 ECDH + HKDF-SHA256 + XChaCha20-Poly1305");
+            println!("Ephemeral X25519:   {}", p.ephemeral_pub_hex);
+            println!("Ciphertext Size:    {} bytes", p.ciphertext_len);
+            if let Some(fp) = p.signer_fingerprint {
+                println!("Embedded Signature: ✅ Present (Ed25519)");
+                println!("Signer Fingerprint: {}", fp);
+                let matched = keyring.iter().any(|k| k.fingerprint.eq_ignore_ascii_case(&fp));
+                if matched {
+                    println!("Local Keyring:      ✅ Matching keypair found in keystore/");
+                } else {
+                    println!("Local Keyring:      ℹ️  No matching keypair in local keystore/");
+                }
+            } else {
+                println!("Embedded Signature: ⚠️  None (Unsigned)");
+            }
+        }
+        InspectedFile::Sgpg(s) => {
+            let kind_desc = match s.blob_type.as_deref() {
+                Some("file") => "Symmetric Password-Encrypted File (type=file)",
+                Some("ed25519") => "Encrypted Ed25519 Signing Private Key Backup (type=ed25519)",
+                Some("x25519") => "Encrypted X25519 Decryption Private Key Backup (type=x25519)",
+                Some(other) => other,
+                None => "Unknown SGPGv1 payload",
+            };
+            println!("Format:             SGPGv1 (Password-Based Encrypted Container)");
+            println!("Payload Type:       {}", kind_desc);
+            println!("Algorithm Suite:    Argon2id + XChaCha20-Poly1305");
+            println!(
+                "Argon2id Params:    m_cost={} KiB ({} MiB), t_cost={}, p_cost={}",
+                s.mem_kib,
+                s.mem_kib / 1024,
+                s.t_cost,
+                s.p_cost
+            );
+            println!("Ciphertext Size:    {} bytes", s.ciphertext_len);
+            if let Some(fp) = s.fingerprint {
+                println!("Bound Fingerprint:  {}", fp);
+                let matched = keyring.iter().any(|k| k.fingerprint.eq_ignore_ascii_case(&fp));
+                if matched {
+                    println!("Local Keyring:      ✅ Present in local keystore/");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn cmd_key_list() -> Result<(), Box<dyn std::error::Error>> {
+    let entries = scan_keystore(Path::new("keystore"))?;
+    if entries.is_empty() {
+        println!("📭 No keypairs found in keystore/ directory.");
+        println!("   Run 'yacrypt gen-keypair <name> <email>' to generate one.");
+        return Ok(());
+    }
+
+    println!("🔑 Local Keystore ({} keypair(s) found):", entries.len());
+    println!("========================================");
+    for (idx, entry) in entries.iter().enumerate() {
+        println!("[{}] Fingerprint: {}", idx + 1, entry.fingerprint);
+        let mark = |opt: &Option<PathBuf>| if opt.is_some() { "✅" } else { "❌" };
+        println!(
+            "    Ed25519 (Sign/Verify): pub={} priv={}",
+            mark(&entry.ed25519_pub_path),
+            mark(&entry.ed25519_enc_path)
+        );
+        println!(
+            "    X25519  (ECDH Crypt):  pub={} priv={}",
+            mark(&entry.x25519_pub_path),
+            mark(&entry.x25519_enc_path)
+        );
+        if let Some(ref x_enc) = entry.x25519_enc_path {
+            println!("    Decrypt Private Key:   {}", x_enc.display());
+        }
+    }
+    Ok(())
 }
 
 pub fn cmd_generate_strong_password(length: usize) -> Result<(), Box<dyn std::error::Error>> {
@@ -241,6 +337,7 @@ pub fn cmd_encrypt_file_with_key_cli(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_encrypt_workflow(
     input: &Path,
     name: &str,
@@ -248,10 +345,23 @@ pub fn cmd_encrypt_workflow(
     output: Option<&Path>,
     existing_key: Option<&Path>,
     sign_key: Option<&Path>,
+    symmetric: bool,
     force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !input.exists() {
         return Err(format!("Input file not found: {}", input.display()).into());
+    }
+
+    if symmetric {
+        println!("🔐 Encrypting file in symmetric password mode (SGPGv1)...");
+        let pass = match prompt_password_confirm("Enter encryption password") {
+            Some(p) => p,
+            None => return Err("Failed to read encryption password".into()),
+        };
+        let out_path = encrypt_file_symmetric(input, &pass, output, force)?;
+        println!("✅ File symmetrically encrypted: {}", out_path.display());
+        println!("📋 To decrypt, run: yacrypt decrypt {}", out_path.display());
+        return Ok(());
     }
 
     if let Some(key_path) = existing_key {
@@ -350,17 +460,41 @@ pub fn cmd_encrypt_workflow(
 
 pub fn cmd_decrypt_workflow(
     input: &Path,
-    private_key_path: &Path,
+    private_key_path: Option<&Path>,
     output: Option<&Path>,
     signer: Option<&str>,
     require_signature: bool,
+    symmetric: bool,
     force: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !input.exists() {
         return Err(format!("Encrypted file not found: {}", input.display()).into());
     }
-    if !private_key_path.exists() {
-        return Err(format!("Private key file not found: {}", private_key_path.display()).into());
+
+    // 自动检测是否为 SGPGv1 对称加密容器（当未显式传入 --private-key 或显式指定 --symmetric 时）
+    let is_sgpg = symmetric
+        || (private_key_path.is_none()
+            && matches!(inspect_file(input), Ok(InspectedFile::Sgpg(_))));
+
+    if is_sgpg {
+        println!("🔓 Decrypting symmetric password-protected file...");
+        let pass =
+            Zeroizing::new(Password::new().with_prompt("Enter decryption password").interact()?);
+        let out_path = decrypt_file_symmetric(input, &pass, output, force)?;
+        println!("✅ Complete decryption workflow finished!");
+        println!("   - Decrypted file: {}", out_path.display());
+        return Ok(());
+    }
+
+    let Some(priv_key) = private_key_path else {
+        return Err(
+            "Missing --private-key <x25519_private_*.asc.enc> (required for .pubenc public-key encrypted files)"
+                .into(),
+        );
+    };
+
+    if !priv_key.exists() {
+        return Err(format!("Private key file not found: {}", priv_key.display()).into());
     }
     if let Some(s) = signer {
         let _ = resolve_signer_fingerprint(s)?;
@@ -373,7 +507,7 @@ pub fn cmd_decrypt_workflow(
     println!("🔓 Step 2/2: Decrypting and verifying file...");
     let outcome = decrypt_workflow_with_password(
         input,
-        private_key_path,
+        priv_key,
         &pass,
         output,
         signer,
