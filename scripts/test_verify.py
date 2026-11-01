@@ -22,6 +22,8 @@ class VerificationTests(unittest.TestCase):
         (self.root / "scripts/test_verify.py").write_text("pass\n")
         (self.root / "scripts/test_agentctl.py").write_text("pass\n")
         (self.root / "scripts/test_agy_runner.py").write_text("pass\n")
+        (self.root / "scripts/test_runtime_adapters.py").write_text("pass\n")
+        (self.root / "scripts/test_evolution.py").write_text("pass\n")
         self.bin = Path(self.temp.name) / "bin"
         self.bin.mkdir()
         self.log = Path(self.temp.name) / "calls"

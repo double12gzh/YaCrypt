@@ -54,3 +54,9 @@ run 前台运行，另一个终端可用 `show <id>` 查看 active_run、pid、�
 信号处理不是与 SQLite 原子提交绑定的事务：保留 active_run 后、安装处理器前，以及切换清理信号
 处理器的极短窗口内被中断，仍可能留下 starting/running；这与硬崩溃一样必须确认进程停止后 recover。
 清理期间忽略重复中断是正常已安装处理器路径的行为，不承诺消除这些窗口。
+
+## pi / omp
+
+同一 run 命令支持 pi/omp claim；验收可加 `--harness omp` 跨工具。模型必须使用完整 provider/model selector。
+例：pi 作者 `magpie/agentrouter/gpt-6.1-sol`，omp 验收 `magpie/amd/DeepSeek-V4.1-Flash`。
+这些是本机明确路由示例，不是通用默认模型。完整闭环与约束见 [自进化说明](evolution.md)。

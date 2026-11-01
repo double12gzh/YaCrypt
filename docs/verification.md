@@ -31,3 +31,5 @@ Cargo 依赖及 RustSec 数据库初次获取需要网络；审计不可达是�
 统一入口同时运行 scripts/test_agentctl.py，验证真实临时 Git/SQLite 的协作状态与隔离。
 
 运行器回归 scripts/test_agy_runner.py 使用本地假进程，不访问真实 agy 或模型服务；完整门禁包含该检查。
+
+多运行器协议回归 `scripts/test_runtime_adapters.py` 和自动闭环回归 `scripts/test_evolution.py` 已纳入同一完整入口。测试采用临时 Git/SQLite 和假 CLI 子进程；不访问模型服务。真实模型演练另存任务证据。

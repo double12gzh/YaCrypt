@@ -215,12 +215,12 @@ class Ledger:
             for path in filter(None, files):
                 require(any(path == p.rstrip('/') or path.startswith(p.rstrip('/') + '/')
                             for p in task['allowed_paths']), 'Out-of-scope path: ' + path)
-            if task['harness'] == 'agy':
+            if task['harness'] == 'agy' or task.get('runtime_managed'):
                 from agy_runner import worktree_digest
                 runs = [r for r in task.get('runs', []) if r['role'] == 'execute'
                         and r['attempt'] == task['attempt'] and r['state'] == 'succeeded']
                 require(runs and runs[-1].get('worktree_digest') == worktree_digest(task['worktree']),
-                        'Submission differs from the successful agy execution snapshot')
+                        'Submission differs from the successful runtime execution snapshot')
                 task['execution_run'] = runs[-1]['id']
             task.update(state='review', head=head, submission=proof)
             task.pop('review', None)
@@ -237,12 +237,12 @@ class Ledger:
             require(reviewer.strip() and reviewer != task['owner'], 'Independent reviewer identity required')
             require(task['head'] == head == self.current_head(task), 'Review is stale; resubmit current head')
             run_proof = None
-            if task['harness'] == 'agy':
+            if task['harness'] == 'agy' or task.get('runtime_managed'):
                 runs = [r for r in task.get('runs', []) if r['role'] == 'review'
                         and r['attempt'] == task['attempt'] and r['state'] == 'succeeded'
                         and r['actor'] == reviewer and r['review']['head'] == head
                         and r['review']['verdict'] == verdict and r['response.txt_sha256'] == proof['sha256']]
-                require(runs, 'agy review requires matching cross-model runtime evidence')
+                require(runs, 'Managed review requires matching cross-model runtime evidence')
                 run_proof = {k: runs[-1][k] for k in ('id', 'requested_model', 'conversation_id')}
             task['review'] = dict(reviewer=reviewer, head=head, verdict=verdict, evidence=proof)
             if run_proof:
@@ -360,6 +360,7 @@ def parser():
     a = sub.add_parser('run'); a.add_argument('id'); a.add_argument('--role', choices=['execute','review'], required=True)
     a.add_argument('--model', required=True); a.add_argument('--actor', required=True); a.add_argument('--token')
     a.add_argument('--seconds', type=int, default=300); a.add_argument('--instructions')
+    a.add_argument('--harness', choices=['agy','pi','omp'])
     a = sub.add_parser('release'); a.add_argument('--token', required=True); a.add_argument('--reason', required=True)
     return p
 
@@ -390,7 +391,7 @@ def main():
         elif args.cmd == 'finish': result = ledger.finish(args.token, args.head, args.evidence)
         elif args.cmd == 'run':
             from agy_runner import execute
-            result = execute(ledger, args.id, args.role, args.model, args.actor, args.token, args.seconds, args.instructions)
+            result = execute(ledger, args.id, args.role, args.model, args.actor, args.token, args.seconds, args.instructions, args.harness)
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0 if result['state'] == 'succeeded' else 1
         elif args.cmd == 'release': result = ledger.release(args.token, args.reason)

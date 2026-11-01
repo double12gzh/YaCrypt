@@ -1,0 +1,16 @@
+{
+  "automatic_kinds": [
+    "snapshot_directory_replacement",
+    "broken_markdown_link"
+  ],
+  "author": {
+    "harness": "pi",
+    "model": "magpie/agentrouter/gpt-6.1-sol"
+  },
+  "reviewer": {
+    "harness": "omp",
+    "model": "magpie/amd/DeepSeek-V4.1-Flash"
+  },
+  "run_seconds": 900,
+  "gate_seconds": 900
+}

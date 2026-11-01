@@ -42,7 +42,7 @@ integrated 必须连同 integrated_target 阅读；集成到试验分支不等�
 agy 已提供显式 `run` 适配器，源码为 [agy_runner.py](../../scripts/agy_runner.py)，操作见
 [agy 运行说明](../agy-runner.md)。它实际查询模型目录、启动 print 子进程，并持久保存请求模型、
 运行参数、conversation_id、退出码、用量、日志哈希与状态；不再只记录工具标签。
-Codex / pi / omp 仍使用手动 handoff，本轮未实现它们的自动进程适配器。
+pi/omp 已接入 [runtime_adapters.py](../../scripts/runtime_adapters.py)，可用 run --harness 指定验收工具。Codex CLI 仍为手动 handoff。
 
 run 在数据库中先保留 active_run，再启动独立进程组；有效执行租约必须覆盖超时及清理余量。
 active_run 阻止重复运行和手动 submit/review。异常退出时保留失败回执；监督进程被强杀时可能
@@ -70,3 +70,13 @@ agy JSON 当前不返回可证明的后端模型身份，所以 requested_model 
 信号处理不是与 SQLite 原子提交绑定的事务：保留 active_run 后、安装处理器前，以及切换清理信号
 处理器的极短窗口内被中断，仍可能留下 starting/running；这与硬崩溃一样必须确认进程停止后 recover。
 清理期间忽略重复中断是正常已安装处理器路径的行为，不承诺消除这些窗口。
+
+## 有限自动闭环
+
+[evolution.py](../../scripts/evolution.py) 管理确定性探针、候选去重、独占 cycle 锁、单任务执行、完整门禁、独立验收、候选分支集成和复盘写回。
+操作与失败契约见 [自进化说明](../evolution.md)。candidates 表是可增量建立的本地状态，原任务 schema 保持兼容。
+queued 候选不自动重派；阶段日志和任务令牌属于不同权限数据，公开 cycle.json 不包含令牌。
+每轮最多两个受超时约束的 agent 会话，不自动重试、改政策、合并 main 或发布。成功后下一轮使用候选分支的新经验。
+pi/omp 的实际 run 标记 runtime_managed，submit/review 同样强制绑定真实回执；旧的手动 pi/omp handoff 兼容。
+运行器按路由末段与 effort 归一化模型身份；显式 responseModel 不匹配时拒绝。NDJSON 必须有会话及最终完整结束事件。
+新增 [适配器回归](../../scripts/test_runtime_adapters.py) 和 [闭环回归](../../scripts/test_evolution.py) 纳入统一门禁。

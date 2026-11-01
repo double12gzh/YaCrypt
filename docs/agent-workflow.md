@@ -1,8 +1,8 @@
 # Agent 协作流程
 
 适用于 agy / Codex / pi / omp；工具只负责执行，项目文件保存任务和知识。
-会话由协调者显式启动；agy 可用 [运行器](agy-runner.md) 实际启动并交叉验收，其他工具仍手动 handoff。
-无定时运行、自动合并或发布。[agentctl](agentctl.md)
+会话由协调者显式启动；agy/pi/omp 可用 [运行器](agy-runner.md) 实际启动并交叉验收，Codex CLI 仍手动 handoff。
+可运行 [有限闭环](evolution.md)，无永久定时任务、自动合并 main 或发布。[agentctl](agentctl.md)
 持久保存领取、尝试、证据和集成状态；接口及失败语义见 [台账契约](subsystems/coordination.md)。
 
 1. 协调者复制 [任务卡](templates/task.md) 到 `docs/tasks/<id>.md`，写清来源、目标、验收、
