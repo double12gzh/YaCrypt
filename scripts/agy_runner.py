@@ -23,8 +23,9 @@ def worktree_digest(worktree):
     names = git(worktree, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0')
     for name in sorted(set(filter(None, names))):
         path = Path(worktree) / name
-        if not path.exists() and not path.is_symlink():
-            continue  # Deleted index entries disappear at commit; hash the resulting tree.
+        if not path.is_symlink() and (not path.exists() or path.is_dir()):
+            # Git records leaves, not deleted files or directories replacing them.
+            continue
         digest.update(name.encode() + b'\0')
         if path.is_symlink():
             digest.update(b'link:' + os.readlink(path).encode())
