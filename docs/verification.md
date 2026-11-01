@@ -33,3 +33,5 @@ Cargo 依赖及 RustSec 数据库初次获取需要网络；审计不可达是�
 运行器回归 scripts/test_agy_runner.py 使用本地假进程，不访问真实 agy 或模型服务；完整门禁包含该检查。
 
 多运行器协议回归 `scripts/test_runtime_adapters.py` 和自动闭环回归 `scripts/test_evolution.py` 已纳入同一完整入口。测试采用临时 Git/SQLite 和假 CLI 子进程；不访问模型服务。真实模型演练另存任务证据。
+
+运行监督需要 Python 的 POSIX waitid/WNOWAIT API；Apple 自带 Python 3.9.6 可能未编译这些 API。evolution 的 scan/tick/watch/resume 和 agentctl run 在打开台账前检查；缺失时探测 PATH、/opt/homebrew/bin/python3、/usr/local/bin/python3 的现有解释器，打印提示并保持参数重启，同时为本进程及子进程优先使用所选 python3。不安装软件、不改全局 PATH；没有可用解释器则明确失败，不派工。纯台账操作仍可使用原解释器。直接运行完整门禁时也须将具备该 API 的 Python 放在 PATH 首位。

@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
+import io
 
 import test_agentctl as fixtures
 from agentctl import Error, git
@@ -84,6 +86,27 @@ for e in [dict(type='session',id='fixture-session'),dict(type='message_end',mess
     def test_model_identity_ignores_harness_route_and_effort(self):
         self.assertEqual(model_key('magpie/group/Gemini-3.8-flash'),model_key('gemini-3.8-flash-high'))
         self.assertNotEqual(model_key('gemini-3.8-flash'),model_key('gpt-6.1-sol'))
+
+
+class BootstrapTests(unittest.TestCase):
+    def test_missing_waitid_reexecs_before_work_with_preserved_arguments(self):
+        import agy_runner
+        # Simulate an unsupported current executable; probe the real capable interpreter.
+        executable=sys.executable
+        with patch('agy_runner.supervisor_supported',return_value=False), patch('agy_runner.supervisor_candidates',return_value=[os.path.relpath(executable)]), patch('agy_runner.sys.executable','/unsupported/python3'), patch('agy_runner.sys.argv',['scripts/evolution.py','watch','--cycles','4']), patch.dict(os.environ,{'PATH':'/original/bin'}), patch('agy_runner.sys.stderr',new_callable=io.StringIO) as err, patch('agy_runner.os.execv',side_effect=RuntimeError('reexec')) as launch:
+            with self.assertRaisesRegex(RuntimeError,'reexec'):
+                agy_runner.ensure_supervisor_python()
+            self.assertEqual(launch.call_args.args[1][1:], [str(Path('scripts/evolution.py').resolve()),'watch','--cycles','4'])
+            self.assertEqual(os.environ['PATH'],str(Path(executable).parent)+os.pathsep+'/original/bin')
+            self.assertIn('restarting',err.getvalue())
+
+    def test_no_compatible_interpreter_fails_without_launch_or_path_change(self):
+        import agy_runner
+        with patch('agy_runner.supervisor_supported',return_value=False), patch('agy_runner.supervisor_candidates',return_value=[]), patch('agy_runner.os.execv') as launch, patch.dict(os.environ,{'PATH':'/original/bin'}):
+            with self.assertRaisesRegex(Error,'No compatible local interpreter'):
+                agy_runner.ensure_supervisor_python()
+            launch.assert_not_called()
+            self.assertEqual(os.environ['PATH'],'/original/bin')
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -40,3 +40,7 @@ finish 仅核对目标 ref 时也会接受脏工作区。路径保留原始分�
 ## YC-007：协议、审查与恢复都要绑定可复现事实
 
 真实 pi 完成事件可带 agent_settled；只凭退出码或单一末事件判断会丢弃合法产物。显式 responseModel 冲突应拒绝，不能用工具标签证明模型。审查的阻塞意见须核对源码与复现，非阻塞建议不等于失败；保留原结论并显式复核，不能改写成 PASS。恢复前先检查租约能覆盖验证时间，过期不先消耗门禁/模型资源。上述协议、失败不重派、worktree 隔离与租约边界已有回归。见 [复盘](docs/tasks/YC-007-retrospective.md)。Seen：2026-11-01（一次）。
+
+## YC-008：验证实际入口解释器，不能仅核对 Python 版本
+
+同机 Homebrew Python 提供 waitid/WNOWAIT，Apple Python 3.9.6 没有。完整门禁在前者通过并不能证明用户终端的后者可启动。CLI 在台账副作用前做能力检查，必要时选择已安装兼容解释器；子进程 PATH 用绝对目录以跨 worktree cwd 保持有效，不降级 PID 保留和进程组清理。加入真实 Apple Python 单轮 watch 和无候选失败检查。见 [任务](docs/tasks/YC-008.md)。

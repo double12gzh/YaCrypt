@@ -369,6 +369,9 @@ def main():
     args = parser().parse_args()
     ledger = None
     try:
+        if args.cmd == 'run':
+            from agy_runner import ensure_supervisor_python
+            ensure_supervisor_python()
         ledger = Ledger(args.repo, initialize=args.cmd == 'init')
         if args.cmd == 'init': result = {'database': str(ledger.dbpath), 'version': 1}
         elif args.cmd == 'add': result = ledger.add(json.loads(args.spec.read_text()))

@@ -15,7 +15,7 @@ import tempfile
 import time
 
 from agentctl import Error, Ledger, git, require, ancestor
-from agy_runner import execute, model_key, stop_group, wait_unreaped, worktree_digest
+from agy_runner import execute, model_key, stop_group, wait_unreaped, worktree_digest, ensure_supervisor_python
 
 KINDS = ('snapshot_directory_replacement', 'broken_markdown_link')
 
@@ -345,6 +345,8 @@ def main():
     def interrupt(signum,frame):raise KeyboardInterrupt
     previous={s:signal.signal(s,interrupt) for s in (signal.SIGTERM,signal.SIGHUP,signal.SIGQUIT)}
     try:
+        if args.action in ('scan','tick','watch','resume'):
+            ensure_supervisor_python()
         ledger=Ledger(args.repo);flow=Evolution(ledger)
         if args.action=='status':result=flow.candidates()
         elif args.action=='reconcile':result=flow.reconcile(args.task,args.stopped,args.reason)

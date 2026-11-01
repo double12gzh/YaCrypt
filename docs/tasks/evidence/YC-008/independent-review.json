@@ -1,0 +1,22 @@
+{
+  "reviewer": "independent Codex subagent python_bootstrap_review",
+  "verdict": "PASS",
+  "source_sha256": {
+    "scripts/agy_runner.py": "24c1764a98da01b8f38f3fbff31ded9a7b9048b8ec795c56c6316f61d99e5316",
+    "scripts/agentctl.py": "efcea4da73b186c8be8f5ea9c8eb50965ff4aaad4791f853025ee9a8fa4e7318",
+    "scripts/evolution.py": "46cadb1eac2b59f457dc54b8c92fe01ee9b7e00fc6c2d0948faa1727dae9d478",
+    "scripts/test_runtime_adapters.py": "86e1c4212f798c98833391e91ac8cadaa8870e5c8a8f510d69caf3182e58811b"
+  },
+  "checks": [
+    "5 adapter tests passed on final source",
+    "Real Apple Python 3.9.6 with PATH=/usr/bin:/bin: isolated watch switched to Homebrew; exit 0, idle, agent_runs 0",
+    "No compatible interpreter: evolution watch and agentctl run exit 1 with structured error and no Ledger call",
+    "Relative interpreter candidate made absolute, retaining python3 symlink; arguments and child PATH preserved",
+    "waitid/WNOWAIT and unreaped leader process-group cleanup unchanged"
+  ],
+  "limits": [
+    "Targeted and isolated CLI checks only; full gate owned by coordinator",
+    "No real model call needed for this startup regression"
+  ],
+  "resolved_finding": "Relative PATH candidate must be absolute before a later gate changes cwd"
+}

@@ -86,3 +86,5 @@ pi/omp 的实际 run 标记 runtime_managed，submit/review 同样强制绑定�
 新增 [适配器回归](../../scripts/test_runtime_adapters.py) 和 [闭环回归](../../scripts/test_evolution.py) 纳入统一门禁。
 
 显式 resume --recheck 只支持原租约仍覆盖门禁时间的失败提交；过期/余量不足先拒绝，不自动续期或消耗模型预算。已提交内容保留，跨租约恢复须先检查现场再 reconcile --stopped。
+
+运行监督需要 Python 的 POSIX waitid/WNOWAIT API；Apple 自带 Python 3.9.6 可能未编译这些 API。evolution 的 scan/tick/watch/resume 和 agentctl run 在打开台账前检查；缺失时探测 PATH、/opt/homebrew/bin/python3、/usr/local/bin/python3 的现有解释器，打印提示并保持参数重启，同时为本进程及子进程优先使用所选 python3。不安装软件、不改全局 PATH；没有可用解释器则明确失败，不派工。纯台账操作仍可使用原解释器。直接运行完整门禁时也须将具备该 API 的 Python 放在 PATH 首位。

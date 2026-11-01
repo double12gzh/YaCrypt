@@ -11,6 +11,52 @@ import subprocess
 import time
 import stat
 import tempfile
+import sys
+
+
+
+SUPERVISOR_SYMBOLS = ('waitid', 'P_PID', 'WEXITED', 'WNOHANG', 'WNOWAIT')
+
+
+def supervisor_supported():
+    return os.name == 'posix' and all(hasattr(os, name) for name in SUPERVISOR_SYMBOLS)
+
+
+def supervisor_candidates():
+    # Known local installations only; never install or change the user's shell.
+    return [shutil.which('python3'), '/opt/homebrew/bin/python3', '/usr/local/bin/python3']
+
+
+def ensure_supervisor_python():
+    """CLI bootstrap only: re-exec before opening a ledger or starting a cycle."""
+    if supervisor_supported():
+        return
+    from agentctl import Error
+    check = ('import os,sys; sys.exit(0 if sys.version_info >= (3,9) and os.name == "posix" '
+             'and all(hasattr(os,n) for n in '+repr(SUPERVISOR_SYMBOLS)+') else 1)')
+    seen = {os.path.realpath(sys.executable)}
+    for candidate in supervisor_candidates():
+        if not candidate:
+            continue
+        candidate = os.path.abspath(candidate)  # PATH remains valid after gate changes cwd.
+        if not os.access(candidate, os.X_OK):
+            continue
+        resolved = os.path.realpath(candidate)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        try:
+            probe = subprocess.run([candidate, '-I', '-c', check], stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if probe.returncode:
+            continue
+        print('Python lacks waitid/WNOWAIT; restarting with '+candidate, file=sys.stderr, flush=True)
+        # verify.sh and nested tools must use the same capable python3 as this CLI.
+        os.environ['PATH'] = str(Path(candidate).parent)+os.pathsep+os.environ.get('PATH','')
+        os.execv(candidate, [candidate, str(Path(sys.argv[0]).resolve()), *sys.argv[1:]])
+    raise Error('Python '+sys.executable+' lacks POSIX waitid/WNOWAIT; run this command with a Python 3.9+ build providing these APIs (for example Homebrew python3). No compatible local interpreter was found; no task was started.')
 
 
 def model_key(model):
@@ -88,6 +134,8 @@ def stop_group(proc):
 
 
 def wait_unreaped(proc, seconds):
+    if not supervisor_supported():
+        raise ValueError('Process supervision requires POSIX waitid/WNOWAIT')
     # Keep the leader PID reserved until the entire group has been stopped.
     deadline = time.monotonic() + seconds
     while True:
@@ -102,7 +150,7 @@ def wait_unreaped(proc, seconds):
 def execute(ledger, name, role, model, actor, token, seconds, instructions=None, harness=None):
     from agentctl import Error, git, require
     require(role in ('execute', 'review'), 'Invalid role')
-    require(os.name == 'posix' and hasattr(os, 'waitid') and hasattr(os, 'WNOWAIT'),
+    require(supervisor_supported(),
             'agy supervisor requires POSIX process groups and waitid/WNOWAIT')
     require(1 <= seconds <= 1800, 'Timeout must be 1..1800 seconds')
     require(actor.strip(), 'Actor required')

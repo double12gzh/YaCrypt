@@ -73,3 +73,5 @@ pi/omp 会话显式使用 low thinking，避免隐式继承全局高思考配置
 本命令不是自动重试，额外会话计入 agent_runs；原循环仍最多两个会话。执行前需准备 verification.md 所列工具并确保 PATH 能找到 cargo-deny。
 
 复核须在原任务的 24 小时租约内，且剩余租约覆盖完整 gate_seconds 和 30 秒余量；不满足时在门禁、模型调用和日志修改前拒绝。不会自动续期或复活过期令牌。过期后先检查已保存的提交/回执，确认旧进程停止，再显式 reconcile --stopped --reason 创建新代任务；旧提交与 worktree 保留，但不冒称原尝试继续成功。
+
+运行监督需要 Python 的 POSIX waitid/WNOWAIT API；Apple 自带 Python 3.9.6 可能未编译这些 API。evolution 的 scan/tick/watch/resume 和 agentctl run 在打开台账前检查；缺失时探测 PATH、/opt/homebrew/bin/python3、/usr/local/bin/python3 的现有解释器，打印提示并保持参数重启，同时为本进程及子进程优先使用所选 python3。不安装软件、不改全局 PATH；没有可用解释器则明确失败，不派工。纯台账操作仍可使用原解释器。直接运行完整门禁时也须将具备该 API 的 Python 放在 PATH 首位。
