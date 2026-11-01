@@ -1,7 +1,8 @@
 {
   "automatic_kinds": [
     "snapshot_directory_replacement",
-    "broken_markdown_link"
+    "broken_markdown_link",
+    "approved_backlog"
   ],
   "author": {
     "harness": "pi",

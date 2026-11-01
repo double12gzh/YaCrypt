@@ -88,3 +88,7 @@ pi/omp 的实际 run 标记 runtime_managed，submit/review 同样强制绑定�
 显式 resume --recheck 只支持原租约仍覆盖门禁时间的失败提交；过期/余量不足先拒绝，不自动续期或消耗模型预算。已提交内容保留，跨租约恢复须先检查现场再 reconcile --stopped。
 
 运行监督需要 Python 的 POSIX waitid/WNOWAIT API；Apple 自带 Python 3.9.6 可能未编译这些 API。evolution 的 scan/tick/watch/resume 和 agentctl run 在打开台账前检查；缺失时探测 PATH、/opt/homebrew/bin/python3、/usr/local/bin/python3 的现有解释器，打印提示并保持参数重启，同时为本进程及子进程优先使用所选 python3。不安装软件、不改全局 PATH；没有可用解释器则明确失败，不派工。纯台账操作仍可使用原解释器。直接运行完整门禁时也须将具备该 API 的 Python 放在 PATH 首位。
+
+## 质量证据入口
+
+[quality_intake.py](../../scripts/quality_intake.py) 将完整门禁运行记录存入 quality_diagnostics，将不可变任务正文与显式批准存入 quality_proposals；候选通过 approved_backlog 接入原串行闭环。诊断和提案不调用模型；环境/未知/高风险范围只报告。批准绑定精确 HEAD 与正文哈希；漂移成为 stale，需重新提案，不能自动扩大范围。原两种扫描候选的自动权限不扩展到任意测试失败或模型建议。失败阶段分类仅用于恢复提示，不增加重试预算。契约和风险白名单见 [使用说明](../evolution.md)。

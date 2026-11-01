@@ -17,7 +17,7 @@ import time
 from agentctl import Error, Ledger, git, require, ancestor
 from agy_runner import execute, model_key, stop_group, wait_unreaped, worktree_digest, ensure_supervisor_python
 
-KINDS = ('snapshot_directory_replacement', 'broken_markdown_link')
+KINDS = ('snapshot_directory_replacement', 'broken_markdown_link', 'approved_backlog')
 
 
 def command(argv, cwd, log, seconds):
@@ -118,7 +118,10 @@ class Evolution:
             keys={x['key'] for x in found}
             for row in self.ledger.db.execute('SELECT body FROM candidates').fetchall():
                 item=json.loads(row[0])
-                can_resolve = item['state']=='detected'
+                if item['kind']=='approved_backlog' and item['state']=='detected' and item['head']!=git(root,'rev-parse','HEAD'):
+                    item['state']='stale'
+                    self.ledger.db.execute('UPDATE candidates SET body=? WHERE key=?',(json.dumps(item),item['key']))
+                can_resolve = item['state']=='detected' and item['kind']!='approved_backlog'
                 if item['state']=='queued' and item.get('task'):
                     row=self.ledger.db.execute('SELECT body FROM tasks WHERE id=?',(item['task'],)).fetchone()
                     task=json.loads(row[0]) if row else {}
@@ -154,9 +157,16 @@ class Evolution:
         with self.lock():
             self.scan(root)
             choices=[c for c in self.candidates() if c['state']=='detected' and c['kind'] in policy['automatic_kinds']]
-            if not choices:return {'state':'idle','agent_runs':0}
+            if not choices:
+                result={'state':'idle','agent_runs':0}
+                stale=[c['proposal'] for c in self.candidates() if c['state']=='stale' and c['kind']=='approved_backlog']
+                if stale:result['stale_proposals']=stale
+                return result
             require(not self.ledger.db.execute('SELECT 1 FROM integration').fetchone(), 'Integration slot occupied; do not spend model budget')
             candidate=choices[0]
+            if candidate['kind']=='approved_backlog':
+                from quality_intake import authorize_candidate
+                authorize_candidate(self,root,candidate)
             name='EV-'+hashlib.sha256((candidate['key']+':'+str(candidate['generation'])).encode()).hexdigest()[:12]
             directory=self.directory/name;directory.mkdir(mode=0o700)
             state=dict(id=name,state='starting',source=candidate,started=time.time(),policy=policy,
@@ -170,7 +180,7 @@ class Evolution:
                 # requiring inspection rather than silently spending again.
                 spec=dict(id=name,source=json.dumps(candidate,ensure_ascii=False),goal=candidate['goal'],
                           non_goals='No credential access, cryptography/dependency changes, gate weakening, policy edits, Git operations or changes outside allowed_paths.',
-                          acceptance=['Original discovery probe must pass; add a regression for a code fix.','Coordinator full verify gate passes.','Independent different-model review returns PASS for exact commit.'],
+                          acceptance=candidate.get('acceptance',[])+['Original discovery evidence must be addressed; add a meaningful regression for a code fix.','Coordinator full verify gate passes.','Independent different-model review returns PASS for exact commit.'],
                           allowed_paths=candidate['allowed_paths'],max_attempts=1)
                 with self.ledger.transaction():
                     candidate.update(state='queued',task=name)
@@ -205,7 +215,7 @@ class Evolution:
                 require(review['review']['verdict']=='PASS','Independent review did not pass; automatic retry disabled')
                 return self.complete(state,directory,save,gate)
             except Exception as exc:
-                save('failed',error=type(exc).__name__+': '+str(exc),finished=time.time())
+                save('failed',failure_class=failure_class(state['state']),error=type(exc).__name__+': '+str(exc),finished=time.time())
                 if integration.exists():self.writeback(integration,state,False)
                 # Leave source, leases, integration slot and reports intact for explicit recovery.
                 return state
@@ -273,23 +283,30 @@ class Evolution:
                     require(review['review']['verdict']=='PASS','Explicit recheck did not pass')
                 return self.complete(state,directory,save,gate)
             except Exception as exc:
-                save('failed',error=type(exc).__name__+': '+str(exc),finished=time.time())
+                save('failed',failure_class=failure_class(state['state']),error=type(exc).__name__+': '+str(exc),finished=time.time())
                 return state
 
     @staticmethod
     def writeback(root,state,passed):
         root=Path(root);name=state['id']
-        body='# '+name+' 自动复盘\n\n```json\n'+json.dumps({k:state.get(k) for k in ('id','state','source','policy','author_run','review_run','head','verdict','integrated_head','error','prior_error','resume_reason','agent_runs')},ensure_ascii=False,indent=2)+'\n```'
-        body+='\n\n已验证事实：'+('发现探针、完整门禁及独立验收通过；代码已集成到上述候选分支。' if passed else '本轮未完成；保留现场，需人工检查，不自动重新领取。')
+        body='# '+name+' 自动复盘\n\n```json\n'+json.dumps({k:state.get(k) for k in ('id','state','source','policy','author_run','review_run','head','verdict','integrated_head','error','prior_error','resume_reason','agent_runs','failure_class')},ensure_ascii=False,indent=2)+'\n```'
+        body+='\n\n已验证事实：'+('任务验收、完整门禁及独立验收通过；代码已集成到上述候选分支。' if passed else '本轮未完成；保留现场，需人工检查，不自动重新领取。')
         body+='\n运行日志与原始回执保留在本机 Git common dir/agentctl/evolution 和 runs。未合并 main、未推送或发布。\n'
         path=root/'docs/tasks'/ (name+'-retrospective.md');path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8')
         if passed:
             lessons=root/'LESSONS.md'
             prior=lessons.read_text(encoding='utf-8') if lessons.exists() else '# 开发教训\n'
             prior+='\n## '+name+'：自动探针的已验证记录\n\n'
-            prior+='探针 '+state['source']['kind']+' 在 '+state['source']['head']+' 失败，在 '+state['head']+' 通过。\n'
+            if state['source']['kind']=='approved_backlog':
+                prior+='经显式批准的任务 '+state['source']['proposal']+' 在 '+state['head']+' 完成回归与独立验收；源诊断状态见复盘，不推断原完整门禁失败。\n'
+            else:
+                prior+='探针 '+state['source']['kind']+' 在 '+state['source']['head']+' 失败，在 '+state['head']+' 通过。\n'
             prior+='这是一条事实记录，尚未自动晋升为工程规范。证据见 [复盘](docs/tasks/'+name+'-retrospective.md)。\n'
             lessons.write_text(prior,encoding='utf-8')
+
+
+def failure_class(stage):
+    return {'executing':'runtime','validating':'validation','reviewing':'review_runtime','rechecking':'review_runtime','reviewed':'review_issues','integrating':'integration','integrated':'feedback'}.get(stage,'environment_or_setup')
 
 
 def save_cycle(directory,state,stage,**fields):
@@ -332,8 +349,13 @@ def validate_policy(policy):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo',default='.')
-    parser.add_argument('action',choices=['scan','status','tick','watch','reconcile','resume'])
+    parser.add_argument('action',choices=['scan','status','tick','watch','reconcile','resume','diagnose','propose','approve','proposals'])
     parser.add_argument('--policy',type=Path)
+    parser.add_argument('--diagnostic')
+    parser.add_argument('--backlog',type=Path)
+    parser.add_argument('--proposal')
+    parser.add_argument('--actor',default='')
+    parser.add_argument('--seconds',type=int,default=900)
     parser.add_argument('--task')
     parser.add_argument('--stopped',action='store_true')
     parser.add_argument('--reason',default='')
@@ -345,10 +367,16 @@ def main():
     def interrupt(signum,frame):raise KeyboardInterrupt
     previous={s:signal.signal(s,interrupt) for s in (signal.SIGTERM,signal.SIGHUP,signal.SIGQUIT)}
     try:
-        if args.action in ('scan','tick','watch','resume'):
+        if args.action in ('scan','tick','watch','resume','diagnose'):
             ensure_supervisor_python()
         ledger=Ledger(args.repo);flow=Evolution(ledger)
-        if args.action=='status':result=flow.candidates()
+        if args.action in ('diagnose','propose','approve','proposals'):
+            import quality_intake as quality
+            if args.action=='diagnose':result=quality.diagnose(flow,ledger.repo,args.seconds)
+            elif args.action=='propose':result=quality.propose(flow,ledger.repo,args.diagnostic,args.backlog)
+            elif args.action=='approve':result=quality.approve(flow,ledger.repo,args.proposal,args.actor,args.reason)
+            else:result=quality.board(flow)
+        elif args.action=='status':result=flow.candidates()
         elif args.action=='reconcile':result=flow.reconcile(args.task,args.stopped,args.reason)
         elif args.action=='resume':result=[flow.resume(args.task,args.recheck,args.reason,args.instructions)]
         elif args.action=='scan':
@@ -366,6 +394,7 @@ def main():
                 if current['state']=='failed':break
                 if args.action=='watch' and i+1<args.cycles:time.sleep(args.interval)
         print(json.dumps(result,ensure_ascii=False,indent=2))
+        if args.action=='diagnose':return 0 if result['status']=='passed' else 1
         return 1 if isinstance(result,list) and any(r.get('state')=='failed' for r in result) else 0
     except KeyboardInterrupt:
         print('Cycle interrupted; inspect the journal and confirm processes stopped before recovery',file=sys.stderr)

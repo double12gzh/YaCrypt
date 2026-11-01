@@ -75,3 +75,23 @@ pi/omp 会话显式使用 low thinking，避免隐式继承全局高思考配置
 复核须在原任务的 24 小时租约内，且剩余租约覆盖完整 gate_seconds 和 30 秒余量；不满足时在门禁、模型调用和日志修改前拒绝。不会自动续期或复活过期令牌。过期后先检查已保存的提交/回执，确认旧进程停止，再显式 reconcile --stopped --reason 创建新代任务；旧提交与 worktree 保留，但不冒称原尝试继续成功。
 
 运行监督需要 Python 的 POSIX waitid/WNOWAIT API；Apple 自带 Python 3.9.6 可能未编译这些 API。evolution 的 scan/tick/watch/resume 和 agentctl run 在打开台账前检查；缺失时探测 PATH、/opt/homebrew/bin/python3、/usr/local/bin/python3 的现有解释器，打印提示并保持参数重启，同时为本进程及子进程优先使用所选 python3。不安装软件、不改全局 PATH；没有可用解释器则明确失败，不派工。纯台账操作仍可使用原解释器。直接运行完整门禁时也须将具备该 API 的 Python 放在 PATH 首位。
+
+## 质量信号和人工批准的 backlog
+
+```bash
+python3 scripts/evolution.py diagnose --seconds 900
+python3 scripts/evolution.py propose --diagnostic DG-<id>
+python3 scripts/evolution.py propose --diagnostic DG-<id> --backlog docs/templates/backlog.json
+python3 scripts/evolution.py proposals
+python3 scripts/evolution.py approve --proposal QP-<id> --actor operator --reason '已核对复现、范围和验收'
+python3 scripts/evolution.py tick --policy docs/templates/evolution-policy.json
+```
+
+示例中的 ID 换成实际输出；backlog 模板必须替换为真实任务。diagnose 只运行既有完整 verify，不调用模型；要求干净 HEAD，保存原始日志、摘要、SHA、退出码、失败阶段及超时。失败/环境/源码漂移返回非零；完整门禁通过不会凭空生成任务。环境归类是保守启发式，不保证能自动诊断根因。
+propose 将诊断或操作者提供的 backlog 变成 common Git dir/agentctl/evolution/quality 下的 Markdown 任务卡；诊断指纹按同 HEAD、类别、失败阶段去重，不把每次时间戳变成新任务。backlog 必须包含 title、goal、allowed_paths（精确文件）、acceptance、reproduction 和 evidence。复现文字仅作审查依据，不由脚本当作 shell 执行；手填证据不是工具亲自验证的证明。完整门禁通过时仍可附有独立复现的覆盖缺口 backlog。
+
+风险分级：原两类固定探针仍按白名单自动处理；产品 backlog 一律 needs_approval。只有 src/cli.rs、src/tui/app.rs、src/tui/ui.rs、tests 下 .rs 和 docs/subsystems/interfaces.md 可通过此入口批准；路径必须无 symlink/目录/穿越。密码学、密钥存储、依赖、门禁、权限、发布或未知范围标为 report_only，必须另走人工专项审查，不提供强制放行开关。路径分类不能证明语义安全，批准者仍须审查目标及验收，独立评审须阻断改变安全契约的越界实现。
+
+approve 显式绑定当前干净提交、任务内容哈希、批准者和理由；不立即调用模型。模板 policy 中 approved_backlog 仅允许已批准任务。tick 再核对内容、范围、源码版本，继承 acceptance，原封不动保留批准证据。扫描发现批准版本已变化时标记 stale，返回 stale_proposals 提示；它不会堵住新批准任务，也不会自动迁移批准，需在新 HEAD 重新 propose/approve。旧批准保留作历史。
+
+失败记录增加 failure_class（准备/环境、运行器、验证、验收、集成、复盘），用于选择已有 reconcile 或 resume；不是自动返修授权。默认每轮两会话、失败不重试。成功的 backlog 复盘不会冒称原完整门禁失败，只记录已批准验收与回归的通过事实。没有配置定时服务。

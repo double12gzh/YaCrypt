@@ -15,6 +15,7 @@ run python3 scripts/test_agentctl.py
 run python3 scripts/test_agy_runner.py
 run python3 scripts/test_runtime_adapters.py
 run python3 scripts/test_evolution.py
+run python3 scripts/test_quality_intake.py
 run cargo fmt --all -- --check
 run cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 run cargo test --locked --workspace --all-features

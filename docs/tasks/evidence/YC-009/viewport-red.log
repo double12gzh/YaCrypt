@@ -1,0 +1,140 @@
+warning: `/Users/jeffreyguan/.cargo/config` is deprecated in favor of `config.toml`
+  |
+  = help: if you need to support cargo 1.38 or earlier, you can symlink `config` to `config.toml`
+   Compiling libc v0.2.191
+   Compiling cfg-if v1.0.5
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling version_check v0.9.5
+   Compiling typenum v1.20.1
+   Compiling subtle v2.6.1
+   Compiling semver v1.0.28
+   Compiling strsim v0.11.1
+   Compiling rustversion v1.0.23
+   Compiling const-oid v0.9.6
+   Compiling bitflags v2.13.2
+   Compiling rustc_version v0.4.1
+   Compiling generic-array v0.14.7
+   Compiling zerocopy v0.8.63
+   Compiling heck v0.5.0
+   Compiling ident_case v1.0.1
+   Compiling signal-hook v0.3.18
+   Compiling parking_lot_core v0.9.12
+   Compiling rustix v0.38.44
+   Compiling curve25519-dalek v4.1.3
+   Compiling log v0.4.34
+   Compiling smallvec v1.16.3
+   Compiling scopeguard v1.2.0
+   Compiling rustix v1.1.5
+   Compiling getrandom v0.4.3
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling lock_api v0.4.14
+   Compiling block-buffer v0.10.4
+   Compiling inout v0.1.4
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling paste v1.0.15
+   Compiling colorchoice v1.0.5
+   Compiling allocator-api2 v0.2.21
+   Compiling equivalent v1.0.3
+   Compiling opaque-debug v0.3.1
+   Compiling foldhash v0.1.5
+   Compiling unicode-width v0.2.0
+   Compiling either v1.19.0
+   Compiling anstyle v1.0.14
+   Compiling signature v2.2.0
+   Compiling base64ct v1.8.3
+   Compiling anstyle-query v1.1.5
+   Compiling anstream v1.0.0
+   Compiling itertools v0.13.0
+   Compiling hashbrown v0.15.5
+   Compiling getrandom v0.2.17
+   Compiling errno v0.3.14
+   Compiling rand_core v0.6.4
+   Compiling signal-hook-registry v1.4.8
+   Compiling crypto-common v0.1.7
+   Compiling digest v0.10.7
+   Compiling universal-hash v0.5.1
+   Compiling cpufeatures v0.2.17
+   Compiling mio v1.2.4
+   Compiling parking_lot v0.12.5
+   Compiling sha2 v0.10.9
+   Compiling syn v2.0.119
+   Compiling syn v3.0.9
+   Compiling signal-hook-mio v0.2.5
+   Compiling hmac v0.12.1
+   Compiling blake2 v0.10.6
+   Compiling poly1305 v0.8.0
+   Compiling aead v0.5.2
+   Compiling password-hash v0.5.0
+   Compiling castaway v0.2.4
+   Compiling itoa v1.0.18
+   Compiling clap_lex v1.1.1
+   Compiling unicode-segmentation v1.13.3
+   Compiling once_cell v1.21.4
+   Compiling ryu v1.0.23
+   Compiling unicode-width v0.1.14
+   Compiling indoc v2.0.8
+   Compiling static_assertions v1.1.0
+   Compiling fastrand v2.5.0
+   Compiling unicode-truncate v1.1.0
+   Compiling clap_builder v4.6.7
+   Compiling argon2 v0.5.3
+   Compiling hkdf v0.12.4
+   Compiling console v0.16.6
+   Compiling lru v0.12.5
+   Compiling darling_core v0.24.1
+   Compiling hex v0.4.3
+   Compiling cassowary v0.3.0
+   Compiling tempfile v3.27.0
+   Compiling ppv-lite86 v0.2.21
+   Compiling crossterm v0.28.1
+   Compiling rand_chacha v0.3.1
+   Compiling base64 v0.22.1
+   Compiling rand v0.8.8
+   Compiling shell-words v1.1.1
+   Compiling compact_str v0.8.2
+   Compiling zeroize_derive v1.5.0
+   Compiling strum_macros v0.26.4
+   Compiling clap_derive v4.6.7
+   Compiling zeroize v1.9.1
+   Compiling darling_macro v0.24.1
+   Compiling darling v0.24.1
+   Compiling strum v0.26.3
+   Compiling clap v4.6.7
+   Compiling der v0.7.10
+   Compiling cipher v0.4.4
+   Compiling dialoguer v0.12.0
+   Compiling chacha20 v0.9.1
+   Compiling chacha20poly1305 v0.10.1
+   Compiling x25519-dalek v2.0.1
+   Compiling spki v0.7.3
+   Compiling instability v0.3.14
+   Compiling pkcs8 v0.10.2
+   Compiling ed25519 v2.2.3
+   Compiling ed25519-dalek v2.2.0
+   Compiling yacrypt-core v0.0.1 (/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/viewport-repro/crates/yacrypt-core)
+   Compiling ratatui v0.29.0
+   Compiling yacrypt v0.0.1 (/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/viewport-repro)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.19s
+     Running tests/viewport_repro.rs (target/debug/deps/viewport_repro-5661d269630c7322)
+
+running 1 test
+test selected_file_visible_in_short_terminal ... FAILED
+
+failures:
+
+---- selected_file_visible_in_short_terminal stdout ----
+
+thread 'selected_file_visible_in_short_terminal' (221162842) panicked at tests/viewport_repro.rs:23:5:
+selected file is not visible: ┌ Local Keyring (↑/↓: Select | n:┐┌ Keypair Details ───────────────────────────┐│  (No keypairs in keystore/ — pr││No keypair selected.                        ││         ┌ 🗂️   Select File to Encrypt (12 items) ───────────────────┐         ││         │  📂  Directory: /tmp/fixture                              │w        ││         │  [↑/↓] Move  [Enter] Open/Select  [Backspace/←] Parent   │ keypair.││         │[.] Hidden: OFF  [Esc] Cancel                             │         ││         │                                                          │         ││         │    📄  item_00.txt  (0 B)                                 │         ││         │    📄  item_01.txt  (0 B)                                 │         ││         └──────────────────────────────────────────────────────────┘         ││                                ││                                            │└────────────────────────────────┘└────────────────────────────────────────────┘
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    selected_file_visible_in_short_terminal
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test viewport_repro`

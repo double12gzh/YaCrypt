@@ -1,0 +1,24 @@
+#[allow(dead_code)]
+#[path = "../src/tui/mod.rs"]
+mod tui;
+use ratatui::{backend::TestBackend, Terminal};
+use std::path::PathBuf;
+use tui::app::{FileBrowserEntry, FileBrowserTarget, ModalState, TuiApp};
+
+#[test]
+fn selected_file_visible_in_short_terminal() {
+    let mut app = TuiApp::new(PathBuf::from("/nonexistent-fixture-keystore"));
+    app.modal = ModalState::FileBrowser {
+        target: FileBrowserTarget::EncryptInput,
+        current_dir: PathBuf::from("/tmp/fixture"),
+        entries: (0..12).map(|i| FileBrowserEntry {
+            name: format!("item_{i:02}.txt"), path: PathBuf::from(format!("item_{i:02}.txt")),
+            is_dir: false, is_parent: false, size: 0,
+        }).collect(),
+        selected_idx: 4, show_hidden: false,
+    };
+    let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+    terminal.draw(|f| tui::ui::render(f, &app)).unwrap();
+    let screen: String = terminal.backend().buffer().content.iter().map(|c| c.symbol()).collect();
+    assert!(screen.contains("item_04.txt"), "selected file is not visible: {screen}");
+}

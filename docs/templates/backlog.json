@@ -1,0 +1,8 @@
+{
+  "title": "替换为实际问题标题",
+  "goal": "替换为可观察的修复目标",
+  "allowed_paths": ["src/tui/ui.rs", "docs/subsystems/interfaces.md"],
+  "acceptance": ["原复现通过，并加入能暴露旧问题的回归"],
+  "reproduction": ["替换为已验证的复现步骤；文字不会作为 shell 自动执行"],
+  "evidence": "替换为实际日志路径、SHA256 和观察结果；模板本身不是证据"
+}
