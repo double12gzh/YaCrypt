@@ -84,6 +84,58 @@ class EvolutionTests(unittest.TestCase):
         self.assertEqual(self.ledger.task(result['id'])['state'],'ready')
         self.assertTrue(Path(result['worktree']).exists())
 
+    def test_worktree_provisioning_failure_keeps_journal_and_never_dispatches(self):
+        flow=self.prepare()
+        def fail_worktree(repo,*args):
+            if args[:2]==('worktree','add'):raise Error('injected worktree provisioning failure')
+            return git(repo,*args)
+        with patch('evolution.snapshot_probe',return_value={'stable':True}),patch('evolution.git',side_effect=fail_worktree),patch('evolution.execute') as run:
+            result=flow.tick(self.root,POLICY)
+            self.assertEqual(result['state'],'failed')
+            self.assertEqual(result['agent_runs'],0)
+            self.assertIn('injected',result['error'])
+            journal=flow.directory/result['id']/'cycle.json'
+            self.assertEqual(json.loads(journal.read_text())['state'],'failed')
+            self.assertEqual(flow.candidates()[0]['task'],result['id'])
+            self.assertEqual(flow.tick(self.root,POLICY)['state'],'idle')
+            run.assert_not_called()
+        self.assertEqual(flow.reconcile(result['id'],True,'fixture stopped')['generation'],2)
+
+    def test_linked_controller_uses_distinct_author_and_integration_worktrees(self):
+        self.prepare()
+        controller=self.root/'.worktrees/controller'
+        git(self.root,'worktree','add','-b','controller',str(controller))
+        from agentctl import Ledger
+        ledger=Ledger(controller);self.addCleanup(ledger.db.close)
+        flow=Evolution(ledger)
+        with patch('evolution.snapshot_probe',return_value={'stable':True}),patch('evolution.execute',return_value={'state':'failed'}):
+            result=flow.tick(controller,POLICY)
+        self.assertEqual(result['state'],'failed')
+        self.assertEqual(result['agent_runs'],1)
+        self.assertEqual(Path(result['worktree']).parent,(self.root/'.worktrees/agentctl').resolve())
+        self.assertEqual(Path(result['integration']).parent,(self.root/'.worktrees').resolve())
+        self.assertNotEqual(result['worktree'],result['integration'])
+        self.assertTrue(Path(result['worktree']).is_dir())
+        self.assertTrue(Path(result['integration']).is_dir())
+
+    def test_failed_review_requires_explicit_recheck_then_resumes_feedback(self):
+        flow=self.prepare()
+        (self.root/'docs/exists.md').write_text('intended target')
+        (self.root/'scripts').mkdir();(self.root/'scripts/verify.sh').write_text('#!/bin/sh\nexit 0\n')
+        git(self.root,'add','.');git(self.root,'commit','-m','fixture gate')
+        before=git(self.root,'rev-parse','HEAD');adapters.AdapterTests.fake_tools(self)
+        policy=dict(POLICY,author=dict(harness='pi',model='magpie/test-gemini'),reviewer=dict(harness='omp',model='magpie/test-claude'))
+        with patch('evolution.snapshot_probe',return_value={'stable':True}),patch.dict(os.environ,{'EV_DOC_FIX':'1','EV_REVIEW_ISSUES':'1'}),patch('evolution.coauthor',return_value='Co-Authored-By: GPT <noreply@openai.com>'):
+            failed=flow.tick(self.root,policy);self.assertEqual(failed['state'],'failed')
+            self.assertEqual(flow.resume(failed['id'],False,'not approved yet')['state'],'failed')
+            os.environ.pop('EV_REVIEW_ISSUES')
+            result=flow.resume(failed['id'],True,'operator requests one evidence-backed recheck')
+        self.assertEqual(result['state'],'complete',result)
+        self.assertEqual(result['agent_runs'],3)
+        self.assertEqual(git(self.root,'rev-parse','HEAD'),before)
+        self.assertTrue(list((flow.directory/result['id']).glob('prior-cycle-*.json')))
+        self.assertTrue(list((flow.directory/result['id']).glob('failed-retrospective-*.md')))
+
     def test_dirty_discovery_and_concurrent_cycle_are_rejected(self):
         flow=self.prepare()
         (self.root/'docs/start.md').write_text('dirty')

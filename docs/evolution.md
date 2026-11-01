@@ -64,3 +64,10 @@ pi/omp 读取真实目录并要求完整 NDJSON session→assistant stop→agent
 
 pi 的合法 agent_settled 尾事件（aborted=false）也会接受；若为中止、将要重试或结束后仍有新模型事件则拒绝。
 pi/omp 会话显式使用 low thinking，避免隐式继承全局高思考配置耗尽有限墙钟预算；模型 ID 和 effort 是不同维度。
+
+## 对已提交结果复核并继续
+
+`resume --task <ID> --recheck --reason <原因> --instructions <复核事实文件>` 显式授予一次额外验收会话：
+先在相同干净提交重跑完整门禁，保留旧 ISSUES/失败记录，再取得新的真实模型结论；PASS 后继续候选集成和复盘。
+不加 --recheck 时必须已经有当前提交的独立 PASS。变更过的工作区、BLOCKED、活跃进程或未释放的集成槽不能跳过。
+本命令不是自动重试，额外会话计入 agent_runs；原循环仍最多两个会话。执行前需准备 verification.md 所列工具并确保 PATH 能找到 cargo-deny。

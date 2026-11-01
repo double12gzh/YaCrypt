@@ -15,7 +15,7 @@ import tempfile
 import time
 
 from agentctl import Error, Ledger, git, require, ancestor
-from agy_runner import execute, model_key, stop_group, wait_unreaped
+from agy_runner import execute, model_key, stop_group, wait_unreaped, worktree_digest
 
 KINDS = ('snapshot_directory_replacement', 'broken_markdown_link')
 
@@ -161,17 +161,8 @@ class Evolution:
             directory=self.directory/name;directory.mkdir(mode=0o700)
             state=dict(id=name,state='starting',source=candidate,started=time.time(),policy=policy,
                        agent_runs=0,stages=[],pid=os.getpid())
-            def save(stage,**fields):
-                state.update(fields,state=stage)
-                state['stages'].append(dict(stage=stage,time=time.time()))
-                p=directory/'cycle.json.tmp';p.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
-                p.replace(directory/'cycle.json')
-            def gate(worktree,label):
-                log=directory/(label+'.log')
-                rc=command(['bash','scripts/verify.sh'],worktree,log,policy['gate_seconds'])
-                require(rc==0,'Full gate failed: '+str(log))
-                return dict(head=git(worktree,'rev-parse','HEAD'),worktree=str(worktree),command='bash scripts/verify.sh',exit_code=0,
-                            log=str(log)+' SHA256 '+hashlib.sha256(log.read_bytes()).hexdigest())
+            def save(stage,**fields):save_cycle(directory,state,stage,**fields)
+            def gate(worktree,label):return full_gate(worktree,directory,label,policy)
             branch='codex/evolution-'+name
             integration=self.ledger.primary/'.worktrees'/('evolution-'+name)
             try:
@@ -212,29 +203,80 @@ class Evolution:
                 self.ledger.review(name,'evolution-reviewer',head,review['review']['verdict'],Path(review['directory'])/'response.txt')
                 save('reviewed',review_run=review['id'],verdict=review['review']['verdict'])
                 require(review['review']['verdict']=='PASS','Independent review did not pass; automatic retry disabled')
-                slot=self.ledger.reserve(name,branch,'evolution-integrator')
-                save('integrating')
-                git(integration,'merge','--ff-only',head)
-                proof=gate(integration,'integration-gate')
-                gate_path=directory/'integration-gate.json';gate_path.write_text(json.dumps(proof),encoding='utf-8')
-                self.ledger.finish(slot['token'],head,gate_path)
-                save('integrated',integrated_head=head)
-                self.writeback(integration,state,True)
-                gate(integration,'retrospective-gate')
-                git(integration,'add','LESSONS.md','docs/tasks/'+name+'-retrospective.md')
-                git(integration,'commit','-m','docs(agent): record '+name+' verified feedback','-m','Deterministically record discovery, execution, independent review and gate evidence as observations. Do not promote unverified suggestions to permanent standards.','-m',coauthor(policy['author']['model']))
-                save('complete',result_head=git(integration,'rev-parse','HEAD'),finished=time.time())
-                return state
+                return self.complete(state,directory,save,gate)
             except Exception as exc:
                 save('failed',error=type(exc).__name__+': '+str(exc),finished=time.time())
                 if integration.exists():self.writeback(integration,state,False)
                 # Leave source, leases, integration slot and reports intact for explicit recovery.
                 return state
 
+    def complete(self,state,directory,save,gate):
+        name=state['id'];branch='codex/evolution-'+name
+        integration=self.ledger.primary/'.worktrees'/('evolution-'+name)
+        task=self.ledger.task(name);head=task['head'];policy=state['policy']
+        require(task['state']=='approved' and self.ledger.current_head(task)==head,'Need current independent approval before completion')
+        require(git(integration,'symbolic-ref','--short','HEAD')==branch,'Wrong candidate branch')
+        # A stopped cycle may have an untracked failure report. Preserve it before merge.
+        report=integration/'docs/tasks'/(name+'-retrospective.md')
+        if report.exists() and not git(integration,'ls-files','--',str(report.relative_to(integration))):
+            data=report.read_bytes();backup=directory/('failed-retrospective-'+hashlib.sha256(data).hexdigest()+'.md')
+            backup.write_bytes(data);report.unlink()
+        require(not git(integration,'status','--porcelain','--untracked-files=all'),'Candidate checkout is dirty; inspect before resume')
+        slot=self.ledger.reserve(name,branch,'evolution-integrator')
+        save('integrating',head=head,error=None)
+        git(integration,'merge','--ff-only',head)
+        proof=gate(integration,'integration-gate')
+        gate_path=directory/'integration-gate.json';gate_path.write_text(json.dumps(proof),encoding='utf-8')
+        self.ledger.finish(slot['token'],head,gate_path)
+        save('integrated',integrated_head=head)
+        self.writeback(integration,state,True)
+        gate(integration,'retrospective-gate')
+        git(integration,'add','LESSONS.md','docs/tasks/'+name+'-retrospective.md')
+        git(integration,'commit','-m','docs(agent): record '+name+' verified feedback','-m','Deterministically record discovery, execution, independent review and gate evidence as observations. Do not promote unverified suggestions to permanent standards.','-m',coauthor(policy['author']['model']))
+        save('complete',result_head=git(integration,'rev-parse','HEAD'),finished=time.time())
+        return state
+
+    def resume(self,name,recheck,reason,instructions=None):
+        require(isinstance(name,str) and re.fullmatch(r'EV-[a-f0-9]{12}',name),'Invalid evolution task ID')
+        require(reason.strip(),'Resume requires an explicit reason')
+        with self.lock():
+            directory=self.directory/name;state=json.loads((directory/'cycle.json').read_text(encoding='utf-8'))
+            require(state['state']=='failed','Resume handles failed cycles only')
+            require(not self.ledger.db.execute('SELECT 1 FROM integration').fetchone(),'Release or reconcile the integration slot first')
+            task=self.ledger.task(name)
+            require(not task.get('active_run'),'Stop active runtime before resume')
+            require(task['state'] in ('running','review','approved') and task.get('head'),'Need a submitted implementation; use reconcile for earlier failures')
+            require(self.ledger.current_head(task)==task['head'],'Implementation changed; submit a verified new snapshot instead')
+            policy=state['policy'];validate_policy(policy)
+            # Preserve the previous complete failure record before changing any state.
+            data=(directory/'cycle.json').read_bytes()
+            (directory/('prior-cycle-'+hashlib.sha256(data).hexdigest()+'.json')).write_bytes(data)
+            def save(stage,**fields):save_cycle(directory,state,stage,**fields)
+            def gate(wt,label):return full_gate(wt,directory,label,policy)
+            try:
+                save('resuming',resume_reason=reason,prior_error=state.get('error'),error=None)
+                if recheck:
+                    proof=gate(task['worktree'],'recheck-gate')
+                    evidence=directory/'recheck-gate.json';evidence.write_text(json.dumps(proof),encoding='utf-8')
+                    self.ledger.submit(name,task['token'],task['head'],evidence)
+                    text='Coordinator verified the full gate on this exact clean commit: '+json.dumps(proof)+'. Return only JSON; findings are actionable defects violating acceptance, not optional preferences or environmental limitations. PASS requires findings: []. Put nonblocking notes and read-only limitations in checks. Do not claim tests were run by you.\n'
+                    if instructions:text+=Path(instructions).read_text(encoding='utf-8')
+                    notes=directory/'recheck-instructions.txt';notes.write_text(text,encoding='utf-8')
+                    save('rechecking',agent_runs=state.get('agent_runs',0)+1)
+                    review=execute(self.ledger,name,'review',policy['reviewer']['model'],'evolution-reviewer',None,policy['run_seconds'],notes,policy['reviewer']['harness'])
+                    require(review['state']=='succeeded','Explicit recheck runtime failed')
+                    self.ledger.review(name,'evolution-reviewer',task['head'],review['review']['verdict'],Path(review['directory'])/'response.txt')
+                    save('reviewed',review_run=review['id'],verdict=review['review']['verdict'])
+                    require(review['review']['verdict']=='PASS','Explicit recheck did not pass')
+                return self.complete(state,directory,save,gate)
+            except Exception as exc:
+                save('failed',error=type(exc).__name__+': '+str(exc),finished=time.time())
+                return state
+
     @staticmethod
     def writeback(root,state,passed):
         root=Path(root);name=state['id']
-        body='# '+name+' 自动复盘\n\n```json\n'+json.dumps({k:state.get(k) for k in ('id','state','source','policy','author_run','review_run','head','verdict','integrated_head','error','agent_runs')},ensure_ascii=False,indent=2)+'\n```'
+        body='# '+name+' 自动复盘\n\n```json\n'+json.dumps({k:state.get(k) for k in ('id','state','source','policy','author_run','review_run','head','verdict','integrated_head','error','prior_error','resume_reason','agent_runs')},ensure_ascii=False,indent=2)+'\n```'
         body+='\n\n已验证事实：'+('发现探针、完整门禁及独立验收通过；代码已集成到上述候选分支。' if passed else '本轮未完成；保留现场，需人工检查，不自动重新领取。')
         body+='\n运行日志与原始回执保留在本机 Git common dir/agentctl/evolution 和 runs。未合并 main、未推送或发布。\n'
         path=root/'docs/tasks'/ (name+'-retrospective.md');path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8')
@@ -245,6 +287,23 @@ class Evolution:
             prior+='探针 '+state['source']['kind']+' 在 '+state['source']['head']+' 失败，在 '+state['head']+' 通过。\n'
             prior+='这是一条事实记录，尚未自动晋升为工程规范。证据见 [复盘](docs/tasks/'+name+'-retrospective.md)。\n'
             lessons.write_text(prior,encoding='utf-8')
+
+
+def save_cycle(directory,state,stage,**fields):
+    state.update(fields,state=stage)
+    state['stages'].append(dict(stage=stage,time=time.time()))
+    p=directory/'cycle.json.tmp';p.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
+    p.replace(directory/'cycle.json')
+
+
+def full_gate(worktree,directory,label,policy):
+    log=directory/(label+'.log');before=worktree_digest(worktree)
+    rc=command(['bash','scripts/verify.sh'],worktree,log,policy['gate_seconds'])
+    require(rc==0,'Full gate failed: '+str(log))
+    require(worktree_digest(worktree)==before,'Gate changed project contents; inspect before committing')
+    return dict(head=git(worktree,'rev-parse','HEAD'),worktree=str(worktree),worktree_digest=before,
+                command='bash scripts/verify.sh',exit_code=0,
+                log=str(log)+' SHA256 '+hashlib.sha256(log.read_bytes()).hexdigest())
 
 
 def coauthor(model):
@@ -270,11 +329,13 @@ def validate_policy(policy):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo',default='.')
-    parser.add_argument('action',choices=['scan','status','tick','watch','reconcile'])
+    parser.add_argument('action',choices=['scan','status','tick','watch','reconcile','resume'])
     parser.add_argument('--policy',type=Path)
     parser.add_argument('--task')
     parser.add_argument('--stopped',action='store_true')
     parser.add_argument('--reason',default='')
+    parser.add_argument('--recheck',action='store_true')
+    parser.add_argument('--instructions',type=Path)
     parser.add_argument('--cycles',type=int,default=1)
     parser.add_argument('--interval',type=int,default=300)
     args=parser.parse_args();ledger=None
@@ -284,6 +345,7 @@ def main():
         ledger=Ledger(args.repo);flow=Evolution(ledger)
         if args.action=='status':result=flow.candidates()
         elif args.action=='reconcile':result=flow.reconcile(args.task,args.stopped,args.reason)
+        elif args.action=='resume':result=[flow.resume(args.task,args.recheck,args.reason,args.instructions)]
         elif args.action=='scan':
             with flow.lock():result=flow.scan(ledger.repo)
         else:

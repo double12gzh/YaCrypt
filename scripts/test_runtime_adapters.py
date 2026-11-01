@@ -37,7 +37,7 @@ if tools=='read,edit,write':
 else:
     assert tools=='read'
     head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-    answer=json.dumps(dict(head=head,verdict='PASS',findings=[],checks=['fixture inspected']))
+    answer=json.dumps(dict(head=head,verdict='ISSUES' if os.environ.get('EV_REVIEW_ISSUES') else 'PASS',findings=['fixture issue'] if os.environ.get('EV_REVIEW_ISSUES') else [],checks=['fixture inspected']))
 message=dict(role='assistant', provider=provider, model=model, stopReason='stop', content=[dict(type='text',text=answer)])
 for e in [dict(type='session',id='fixture-session'),dict(type='message_end',message=message),dict(type='agent_end',messages=[message])]:print(json.dumps(e))
 '''
