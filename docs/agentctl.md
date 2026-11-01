@@ -38,13 +38,13 @@ python3 scripts/agentctl.py queue
 ```
 
 实现者先运行统一门禁并本地提交，再 submit；证据文件放在 worktree 外以保持工作区干净。
-评审者依据任务和实际代码独立检查；PASS/ISSUES/BLOCKED 都需证据。
+评审者依据任务和实际代码独立检查；PASS/ISSUES/BLOCKED 都需证据：PASS 进入 approved，ISSUES 返回 running 供当前尝试修复后重新 submit，BLOCKED 进入 blocked 并拒绝继续 renew/submit/execute。
 新提交使旧批准不可集成，重新 submit/review。超时不要更改系统时间或无限续期；确认状态后处理。
 任务和事件包含工作产物，证据只写测试材料，不写真实口令/私钥。
 
 ## 中断与集成
 
-领取租约到期或进程退出后，先停止并确认旧会话不会继续写入，再执行：
+领取租约到期、进程退出或评审判定 BLOCKED（任务处于 blocked）后，先停止并确认旧会话不会继续写入，再执行：
 
 ```bash
 python3 scripts/agentctl.py recover YC-EXAMPLE --stopped --reason '旧会话已结束，保留草稿后接手'

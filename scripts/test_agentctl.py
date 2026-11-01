@@ -206,6 +206,143 @@ class LedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(Error, 'Duplicate'): self.add()
         self.assertEqual(self.ledger.task('one')['state'], 'ready')
 
+    def test_review_verdicts_blocked_state_and_stopped_recovery(self):
+        self.add()
+        old = self.claim()
+        head1 = self.commit(old, 'docs/result.md', 'draft 1\n')
+        self.ledger.submit('one', old['token'], head1, self.report)
+        with self.assertRaisesRegex(Error, 'Invalid review verdict'):
+            self.ledger.review('one', 'reviewer', head1, 'UNKNOWN', self.report)
+
+        issues_report = Path(self.tmp.name) / 'issues.txt'
+        issues_report.write_text('Needs edge-case coverage before approval.\n')
+        issues = self.ledger.review('one', 'reviewer', head1, 'ISSUES', issues_report)
+        self.assertEqual(issues['state'], 'running')
+        self.assertEqual(issues['review']['verdict'], 'ISSUES')
+        self.assertEqual(issues['review']['evidence']['text'], 'Needs edge-case coverage before approval.\n')
+        self.assertEqual(self.ledger.renew('one', old['token'], 3600)['state'], 'running')
+
+        head2 = self.commit(old, 'docs/result.md', 'draft 2\n')
+        self.ledger.submit('one', old['token'], head2, self.report)
+        blocked_report = Path(self.tmp.name) / 'blocked.txt'
+        blocked_report.write_text('Blocked: requires coordinator recovery.\n')
+        res = self.cli('review', 'one', '--reviewer', 'reviewer', '--head', head2,
+                       '--verdict', 'BLOCKED', '--evidence', str(blocked_report))
+        self.assertEqual(res.returncode, 0, res.stderr)
+        blocked = json.loads(res.stdout)
+        self.assertEqual(blocked['state'], 'blocked')
+        self.assertEqual(blocked['review']['verdict'], 'BLOCKED')
+        self.assertEqual(blocked['review']['head'], head2)
+        self.assertEqual(blocked['review']['evidence']['text'], 'Blocked: requires coordinator recovery.\n')
+        blocked_report.write_text('mutated after review\n')
+
+        self.assertEqual(self.ledger.task('one')['state'], 'blocked')
+        self.assertEqual(self.ledger.queue(), [])
+        with self.assertRaisesRegex(Error, 'Only a running task can renew'):
+            self.ledger.renew('one', old['token'], 3600)
+        with self.assertRaisesRegex(Error, 'Task cannot submit'):
+            self.ledger.submit('one', old['token'], head2, self.report)
+        head3 = self.commit(old, 'docs/result.md', 'draft 3 while blocked\n')
+        with self.assertRaisesRegex(Error, 'Task cannot submit'):
+            self.ledger.submit('one', old['token'], head3, self.report)
+        with self.assertRaisesRegex(Error, 'Handoff requires running task'):
+            self.ledger.handoff('one')
+        with self.assertRaisesRegex(Error, 'Approval stale or absent'):
+            self.ledger.reserve('one', 'main', 'integrator')
+        with self.assertRaisesRegex(Error, 'Task is not ready'):
+            self.claim()
+        with self.assertRaisesRegex(Error, 'Confirm old session stopped'):
+            self.ledger.recover('one', False, 'still running')
+        with self.assertRaisesRegex(Error, 'Confirm old session stopped'):
+            self.ledger.recover('one', True, '   ')
+
+        recovered = self.ledger.recover('one', True, 'old session stopped after blocker')
+        self.assertEqual(recovered['state'], 'ready')
+        for key in ('token', 'expires', 'head', 'submission', 'review', 'execution_run'):
+            self.assertNotIn(key, self.ledger.task('one'))
+        with self.assertRaisesRegex(Error, 'Stale or incorrect attempt token'):
+            self.ledger.renew('one', old['token'], 3600)
+        with self.assertRaisesRegex(Error, 'Stale or incorrect attempt token'):
+            self.ledger.submit('one', old['token'], head3, self.report)
+
+        new = self.claim()
+        self.assertEqual(new['state'], 'running')
+        self.assertEqual(new['attempt'], 2)
+        self.assertNotEqual(new['token'], old['token'])
+        self.assertNotEqual(new['worktree'], old['worktree'])
+        self.assertTrue(Path(old['worktree']).exists())
+        self.assertEqual(self.ledger.renew('one', new['token'], 3600)['attempt'], 2)
+
+        head_new = self.commit(new, 'docs/result.md', 'clean attempt 2\n')
+        self.ledger.submit('one', new['token'], head_new, self.report)
+        approved = self.ledger.review('one', 'reviewer', head_new, 'PASS', self.report)
+        self.assertEqual(approved['state'], 'approved')
+        self.assertEqual(approved['review']['verdict'], 'PASS')
+        self.assertTrue(self.ledger.queue()[0]['eligible'])
+
+        shown = json.loads(self.cli('show', 'one').stdout)
+        reviewed_events = [json.loads(e['body']) for e in shown['events'] if e['kind'] == 'reviewed']
+        self.assertEqual([e['state'] for e in reviewed_events], ['running', 'blocked', 'approved'])
+        self.assertEqual([e['review']['verdict'] for e in reviewed_events], ['ISSUES', 'BLOCKED', 'PASS'])
+        self.assertEqual(reviewed_events[1]['review']['head'], head2)
+        self.assertEqual(reviewed_events[1]['review']['evidence']['text'],
+                         'Blocked: requires coordinator recovery.\n')
+
+    def test_blocked_agy_task_rejects_execute_until_recovered(self):
+        from agy_runner import execute
+        bindir = Path(self.tmp.name) / 'bin'; bindir.mkdir()
+        fake_agy = bindir / 'agy'
+        fake_agy.write_text('#!' + sys.executable + '\n' + r'''
+import json, subprocess, sys
+from pathlib import Path
+args = sys.argv[1:]
+if args == ['models']:
+    print('gemini-test-high\tGemini test')
+    print('claude-test-medium\tClaude test')
+    sys.exit(0)
+mode = args[args.index('--mode') + 1]
+head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+if mode == 'accept-edits':
+    Path('docs/result.md').write_text('implemented by fake agy\n')
+    response = 'done'
+else:
+    response = json.dumps(dict(head=head, verdict='BLOCKED',
+                               findings=['blocked on architecture decision'], checks=['unit']))
+print(json.dumps(dict(status='SUCCESS', conversation_id='conv-1', response=response,
+                     usage=dict(input_tokens=1, output_tokens=1))))
+''')
+        fake_agy.chmod(0o755)
+        with patch.dict(os.environ, {'PATH': str(bindir) + os.pathsep + os.environ['PATH']}):
+            self.add('agy-one')
+            claim1 = self.ledger.claim('agy-one', 'author', 'agy', 'main', 3600)
+            exec1 = execute(self.ledger, 'agy-one', 'execute', 'gemini-test-high', 'author', claim1['token'], 10)
+            self.assertEqual(exec1['state'], 'succeeded')
+            wt = claim1['worktree']
+            git(wt, 'add', 'docs/result.md'); git(wt, 'commit', '-m', 'agy attempt 1')
+            head1 = git(wt, 'rev-parse', 'HEAD')
+            self.ledger.submit('agy-one', claim1['token'], head1, self.report)
+            rev_run = execute(self.ledger, 'agy-one', 'review', 'claude-test-medium', 'reviewer', None, 10)
+            self.assertEqual(rev_run['state'], 'succeeded')
+            proof = Path(rev_run['directory']) / 'response.txt'
+            reviewed = self.ledger.review('agy-one', 'reviewer', head1, 'BLOCKED', proof)
+            self.assertEqual(reviewed['state'], 'blocked')
+
+            with self.assertRaisesRegex(Error, 'Execution requires a running agy claim'):
+                execute(self.ledger, 'agy-one', 'execute', 'gemini-test-high', 'author', claim1['token'], 10)
+            with self.assertRaisesRegex(Error, 'Only a running task can renew'):
+                self.ledger.renew('agy-one', claim1['token'], 3600)
+            with self.assertRaisesRegex(Error, 'Task cannot submit'):
+                self.ledger.submit('agy-one', claim1['token'], head1, self.report)
+
+            self.ledger.recover('agy-one', True, 'stopped blocked agy attempt')
+            claim2 = self.ledger.claim('agy-one', 'author', 'agy', 'main', 3600)
+            self.assertEqual(claim2['attempt'], 2)
+            self.assertNotEqual(claim2['token'], claim1['token'])
+            with self.assertRaisesRegex(Error, 'Stale or incorrect attempt token'):
+                execute(self.ledger, 'agy-one', 'execute', 'gemini-test-high', 'author', claim1['token'], 10)
+            exec2 = execute(self.ledger, 'agy-one', 'execute', 'gemini-test-high', 'author', claim2['token'], 10)
+            self.assertEqual(exec2['state'], 'succeeded')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

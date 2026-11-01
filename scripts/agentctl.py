@@ -182,7 +182,7 @@ class Ledger:
         require(stopped and reason.strip(), 'Confirm old session stopped and supply reason')
         with self.transaction():
             task = self.task(name)
-            require(task['state'] in ('provisioning', 'running', 'review', 'approved'), 'Task cannot be recovered')
+            require(task['state'] in ('provisioning', 'running', 'review', 'approved', 'blocked'), 'Task cannot be recovered')
             require(not self.reservation_for(name), 'Release integration reservation first')
             if task.get('active_run'):
                 task['runs'][-1]['state'] = 'abandoned'
@@ -228,6 +228,7 @@ class Ledger:
         return self.public(task)
 
     def review(self, name, reviewer, head, verdict, report):
+        require(verdict in ('PASS', 'ISSUES', 'BLOCKED'), 'Invalid review verdict')
         proof = evidence(report)
         with self.transaction():
             task = self.task(name)
@@ -246,7 +247,7 @@ class Ledger:
             task['review'] = dict(reviewer=reviewer, head=head, verdict=verdict, evidence=proof)
             if run_proof:
                 task['review']['run'] = run_proof
-            task['state'] = 'approved' if verdict == 'PASS' else 'running'
+            task['state'] = {'PASS': 'approved', 'ISSUES': 'running', 'BLOCKED': 'blocked'}[verdict]
             self.save(task, 'reviewed')
         return self.public(task)
 

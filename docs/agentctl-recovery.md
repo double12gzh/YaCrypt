@@ -21,6 +21,7 @@ python3 scripts/agentctl.py integration
 | --- | --- |
 | `running`，会话仍活跃且租约有效 | 原 owner 可用 `renew` 续租，不启动第二个写入者 |
 | 租约已过期，或会话已退出 | 确认旧会话停止后 `recover`，再 `claim` 新尝试 |
+| `blocked`（评审判定 `BLOCKED`） | 原尝试已阻断（拒绝 `renew` / `submit` / `run --role execute`）；排除阻塞并确认旧会话停止后 `recover --stopped`，再 `claim` 新尝试 |
 | `provisioning` 中断 | 确认创建进程停止，保留已有路径和分支，再 `recover` |
 | 有该任务的集成槽 | 先由集成人处理或释放槽；`recover` 会拒绝占槽中的任务 |
 | 尝试次数耗尽 | 停止重试，重新判断任务与环境；不要删台账或换 ID 掩盖失败 |
@@ -52,7 +53,7 @@ python3 scripts/agentctl.py handoff YC-EXAMPLE > /tmp/YC-EXAMPLE-handoff.json
 例如第 1 次尝试中断后，第 2 次尝试使用主 checkout 内的
 `.worktrees/agentctl/YC-EXAMPLE-2`；旧 `YC-EXAMPLE-1` 及其草稿保留。
 新 owner 阅读事件和旧产物，核对新基线，再选择性移植有用内容；不要覆盖旧 worktree 或直接搬入未经审查的全部差异。
-恢复会移除旧的当前提交/评审状态，但事件保留；新尝试需要重新实现、验证和独立验收。
+恢复会移除旧的当前提交/评审状态，但事件历史中的提交与评审证据（含 BLOCKED 原因）完整保留；新尝试需要重新实现、验证和独立验收。
 
 恢复后，旧令牌的 `renew` / `submit` 会报 `Stale or incorrect attempt token`。
 这个拒绝只保护台账状态，不阻止旧进程写文件，因此停止确认不能省略。
