@@ -16,3 +16,11 @@
 Git hook 还可能传入 GIT_DIR/GIT_INDEX_FILE。测试清理 GIT_*、隔离 HOME/全局与系统 Git 配置，
 并用外部 hook 内容不变的断言防复发。另验证同内容 hook 的执行位，而不只比较字节。
 证据见 [独立验收](docs/tasks/YC-001-acceptance.md)。Seen：2026-11-01（一次）。
+
+## YC-002：按协议处理路径，验证绑定干净 checkout
+
+独立验收发现 `.strip()` 会把 Git diff 首个路径的前导空格删除，从而绕过允许目录判断；
+finish 仅核对目标 ref 时也会接受脏工作区。路径保留原始分隔内容，验收同时核对目标 checkout、
+分支、SHA 和干净状态；不要用 `.git` 字符串前缀误禁 .github 等合法治理路径。
+三个问题均已加入 scripts/test_agentctl.py 的回归。Seen：2026-11-01（一次）。
+证据：[YC-002 独立验收](docs/tasks/YC-002-acceptance.md)。

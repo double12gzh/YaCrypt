@@ -1,0 +1,123 @@
+{
+  "id": "YC-004",
+  "goal": "提供租约过期、旧会话停止、新尝试接手及集成中断恢复说明",
+  "source": "第二阶段真实文档改进任务",
+  "non_goals": "不改实现，不推送或合并main，不假定自动启动工具",
+  "acceptance": [
+    "命令与agentctl --help一致",
+    "说明权限、实际工作目录及证据位置",
+    "本地链接有效，说明现有限制"
+  ],
+  "allowed_paths": [
+    "docs/agentctl-recovery.md"
+  ],
+  "state": "integrated",
+  "attempt": 2,
+  "depends_on": [],
+  "max_attempts": 3,
+  "owner": "codex-recovery-writer",
+  "harness": "codex",
+  "base": "bc8bbbe5134b2af5d85a812eedbce1d0002ea386",
+  "worktree": "/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-2",
+  "branch": "codex/task-YC-004-2",
+  "expires": 1793516889.256583,
+  "head": "afcf016bf25f32c2f3565dd445b7d6aba19a6a73",
+  "submission": {
+    "sha256": "3ec0ec05fb109165368968250f7e05e3a6c5b3df676e98765c593ca154936cb5",
+    "text": "YC-004 resumed author result\nhead: afcf016bf25f32c2f3565dd445b7d6aba19a6a73\nAuthor /root/recovery_writer wrote only recovery doc in attempt2; old draft preserved.\n8 CLI examples and 3 local links checked. Full gate exit0: /private/tmp/yacrypt-YC-004-verify.log\n13 ledger +5 gate +59 Rust tests pass; audit yanked warnings retained.\n"
+  },
+  "review": {
+    "reviewer": "phase2_acceptance",
+    "head": "afcf016bf25f32c2f3565dd445b7d6aba19a6a73",
+    "verdict": "PASS",
+    "evidence": {
+      "sha256": "24616b9a87133f7f8ba1d7bcf7430d4072b57e586fe0c2f414e8f6bcf0619364",
+      "text": "Independent PASS by /root/phase2_acceptance\nhead: afcf016bf25f32c2f3565dd445b7d6aba19a6a73\nClean resumed worktree; only recovery doc changed. Old attempt draft retained. Commands/links/stop confirmation/tokens/slot and evidence limits checked.\nFull gate log read: 13 ledger + 5 gate + 59 Rust PASS; audit warnings retained.\n"
+    }
+  },
+  "integrated_head": "c5650c0d476580a44f2a376dece1f76ed5cf0e1e",
+  "integrated_target": "codex/phase2-coordination",
+  "gate": {
+    "sha256": "cf7af7cc61d254eca553fd5d846519177fac70cb02a79559fb76446336c53688",
+    "text": "{\"head\": \"c5650c0d476580a44f2a376dece1f76ed5cf0e1e\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/phase2\", \"command\": \"bash scripts/verify.sh\", \"exit_code\": 0, \"log\": \"/private/tmp/yacrypt-YC-004-integrated.log; 13 ledger + 5 gate + 59 Rust passed; registry/yanked warnings retained\"}"
+  },
+  "events": [
+    {
+      "seq": 2,
+      "task": "YC-004",
+      "time": 1793513287.7446039,
+      "kind": "added",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"ready\", \"attempt\": 0, \"depends_on\": [], \"max_attempts\": 3}"
+    },
+    {
+      "seq": 5,
+      "task": "YC-004",
+      "time": 1793513287.931347,
+      "kind": "claim_reserved",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"provisioning\", \"attempt\": 1, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-interrupted-session\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-1\", \"branch\": \"codex/task-YC-004-1\", \"expires\": 1793513288.931176}"
+    },
+    {
+      "seq": 6,
+      "task": "YC-004",
+      "time": 1793513287.958248,
+      "kind": "claimed",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"running\", \"attempt\": 1, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-interrupted-session\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-1\", \"branch\": \"codex/task-YC-004-1\", \"expires\": 1793513288.931176}"
+    },
+    {
+      "seq": 7,
+      "task": "YC-004",
+      "time": 1793513289.2012742,
+      "kind": "attempt_closed",
+      "body": "{\"attempt\": 1, \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-1\", \"reason\": \"\\u65e7\\u5199\\u5165\\u4f1a\\u8bdd\\u5df2\\u505c\\u6b62\\uff1b\\u79df\\u7ea6\\u5df2\\u8fc7\\u671f\\uff0c\\u4fdd\\u7559\\u672a\\u63d0\\u4ea4\\u8349\\u7a3f\\u4f9b\\u72ec\\u7acb\\u63a5\\u624b\", \"stopped_confirmed\": true}"
+    },
+    {
+      "seq": 8,
+      "task": "YC-004",
+      "time": 1793513289.201302,
+      "kind": "recovered",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"ready\", \"attempt\": 1, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-interrupted-session\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-1\", \"branch\": \"codex/task-YC-004-1\"}"
+    },
+    {
+      "seq": 9,
+      "task": "YC-004",
+      "time": 1793513289.256768,
+      "kind": "claim_reserved",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"provisioning\", \"attempt\": 2, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-recovery-writer\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-2\", \"branch\": \"codex/task-YC-004-2\", \"expires\": 1793516889.256583}"
+    },
+    {
+      "seq": 10,
+      "task": "YC-004",
+      "time": 1793513289.284645,
+      "kind": "claimed",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"running\", \"attempt\": 2, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-recovery-writer\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-2\", \"branch\": \"codex/task-YC-004-2\", \"expires\": 1793516889.256583}"
+    },
+    {
+      "seq": 14,
+      "task": "YC-004",
+      "time": 1793513452.4670222,
+      "kind": "submitted",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"review\", \"attempt\": 2, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-recovery-writer\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-2\", \"branch\": \"codex/task-YC-004-2\", \"expires\": 1793516889.256583, \"head\": \"afcf016bf25f32c2f3565dd445b7d6aba19a6a73\", \"submission\": {\"sha256\": \"3ec0ec05fb109165368968250f7e05e3a6c5b3df676e98765c593ca154936cb5\", \"text\": \"YC-004 resumed author result\\nhead: afcf016bf25f32c2f3565dd445b7d6aba19a6a73\\nAuthor /root/recovery_writer wrote only recovery doc in attempt2; old draft preserved.\\n8 CLI examples and 3 local links checked. Full gate exit0: /private/tmp/yacrypt-YC-004-verify.log\\n13 ledger +5 gate +59 Rust tests pass; audit yanked warnings retained.\\n\"}}"
+    },
+    {
+      "seq": 16,
+      "task": "YC-004",
+      "time": 1793513496.415263,
+      "kind": "reviewed",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"approved\", \"attempt\": 2, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-recovery-writer\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-2\", \"branch\": \"codex/task-YC-004-2\", \"expires\": 1793516889.256583, \"head\": \"afcf016bf25f32c2f3565dd445b7d6aba19a6a73\", \"submission\": {\"sha256\": \"3ec0ec05fb109165368968250f7e05e3a6c5b3df676e98765c593ca154936cb5\", \"text\": \"YC-004 resumed author result\\nhead: afcf016bf25f32c2f3565dd445b7d6aba19a6a73\\nAuthor /root/recovery_writer wrote only recovery doc in attempt2; old draft preserved.\\n8 CLI examples and 3 local links checked. Full gate exit0: /private/tmp/yacrypt-YC-004-verify.log\\n13 ledger +5 gate +59 Rust tests pass; audit yanked warnings retained.\\n\"}, \"review\": {\"reviewer\": \"phase2_acceptance\", \"head\": \"afcf016bf25f32c2f3565dd445b7d6aba19a6a73\", \"verdict\": \"PASS\", \"evidence\": {\"sha256\": \"24616b9a87133f7f8ba1d7bcf7430d4072b57e586fe0c2f414e8f6bcf0619364\", \"text\": \"Independent PASS by /root/phase2_acceptance\\nhead: afcf016bf25f32c2f3565dd445b7d6aba19a6a73\\nClean resumed worktree; only recovery doc changed. Old attempt draft retained. Commands/links/stop confirmation/tokens/slot and evidence limits checked.\\nFull gate log read: 13 ledger + 5 gate + 59 Rust PASS; audit warnings retained.\\n\"}}}"
+    },
+    {
+      "seq": 17,
+      "task": "YC-004",
+      "time": 1793513496.483628,
+      "kind": "integration_reserved",
+      "body": "{\"task\": \"YC-004\", \"head\": \"afcf016bf25f32c2f3565dd445b7d6aba19a6a73\", \"target\": \"codex/phase2-coordination\", \"base\": \"3fe2596a23f05beecf70ec13eb8940e89e3b9359\", \"integrator\": \"codex-phase2-integrator\"}"
+    },
+    {
+      "seq": 18,
+      "task": "YC-004",
+      "time": 1793513552.704694,
+      "kind": "integrated",
+      "body": "{\"id\": \"YC-004\", \"goal\": \"\\u63d0\\u4f9b\\u79df\\u7ea6\\u8fc7\\u671f\\u3001\\u65e7\\u4f1a\\u8bdd\\u505c\\u6b62\\u3001\\u65b0\\u5c1d\\u8bd5\\u63a5\\u624b\\u53ca\\u96c6\\u6210\\u4e2d\\u65ad\\u6062\\u590d\\u8bf4\\u660e\", \"source\": \"\\u7b2c\\u4e8c\\u9636\\u6bb5\\u771f\\u5b9e\\u6587\\u6863\\u6539\\u8fdb\\u4efb\\u52a1\", \"non_goals\": \"\\u4e0d\\u6539\\u5b9e\\u73b0\\uff0c\\u4e0d\\u63a8\\u9001\\u6216\\u5408\\u5e76main\\uff0c\\u4e0d\\u5047\\u5b9a\\u81ea\\u52a8\\u542f\\u52a8\\u5de5\\u5177\", \"acceptance\": [\"\\u547d\\u4ee4\\u4e0eagentctl --help\\u4e00\\u81f4\", \"\\u8bf4\\u660e\\u6743\\u9650\\u3001\\u5b9e\\u9645\\u5de5\\u4f5c\\u76ee\\u5f55\\u53ca\\u8bc1\\u636e\\u4f4d\\u7f6e\", \"\\u672c\\u5730\\u94fe\\u63a5\\u6709\\u6548\\uff0c\\u8bf4\\u660e\\u73b0\\u6709\\u9650\\u5236\"], \"allowed_paths\": [\"docs/agentctl-recovery.md\"], \"state\": \"integrated\", \"attempt\": 2, \"depends_on\": [], \"max_attempts\": 3, \"owner\": \"codex-recovery-writer\", \"harness\": \"codex\", \"base\": \"bc8bbbe5134b2af5d85a812eedbce1d0002ea386\", \"worktree\": \"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-2\", \"branch\": \"codex/task-YC-004-2\", \"expires\": 1793516889.256583, \"head\": \"afcf016bf25f32c2f3565dd445b7d6aba19a6a73\", \"submission\": {\"sha256\": \"3ec0ec05fb109165368968250f7e05e3a6c5b3df676e98765c593ca154936cb5\", \"text\": \"YC-004 resumed author result\\nhead: afcf016bf25f32c2f3565dd445b7d6aba19a6a73\\nAuthor /root/recovery_writer wrote only recovery doc in attempt2; old draft preserved.\\n8 CLI examples and 3 local links checked. Full gate exit0: /private/tmp/yacrypt-YC-004-verify.log\\n13 ledger +5 gate +59 Rust tests pass; audit yanked warnings retained.\\n\"}, \"review\": {\"reviewer\": \"phase2_acceptance\", \"head\": \"afcf016bf25f32c2f3565dd445b7d6aba19a6a73\", \"verdict\": \"PASS\", \"evidence\": {\"sha256\": \"24616b9a87133f7f8ba1d7bcf7430d4072b57e586fe0c2f414e8f6bcf0619364\", \"text\": \"Independent PASS by /root/phase2_acceptance\\nhead: afcf016bf25f32c2f3565dd445b7d6aba19a6a73\\nClean resumed worktree; only recovery doc changed. Old attempt draft retained. Commands/links/stop confirmation/tokens/slot and evidence limits checked.\\nFull gate log read: 13 ledger + 5 gate + 59 Rust PASS; audit warnings retained.\\n\"}}, \"integrated_head\": \"c5650c0d476580a44f2a376dece1f76ed5cf0e1e\", \"integrated_target\": \"codex/phase2-coordination\", \"gate\": {\"sha256\": \"cf7af7cc61d254eca553fd5d846519177fac70cb02a79559fb76446336c53688\", \"text\": \"{\\\"head\\\": \\\"c5650c0d476580a44f2a376dece1f76ed5cf0e1e\\\", \\\"worktree\\\": \\\"/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/phase2\\\", \\\"command\\\": \\\"bash scripts/verify.sh\\\", \\\"exit_code\\\": 0, \\\"log\\\": \\\"/private/tmp/yacrypt-YC-004-integrated.log; 13 ledger + 5 gate + 59 Rust passed; registry/yanked warnings retained\\\"}\"}}"
+    }
+  ]
+}

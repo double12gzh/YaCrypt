@@ -1,0 +1,13 @@
+{
+  "expired_rejection": {
+    "error": "Lease expired; explicit stopped recovery required"
+  },
+  "old_token_rejection": {
+    "error": "Stale or incorrect attempt token"
+  },
+  "old_attempt": 1,
+  "new_attempt": 2,
+  "old_worktree_preserved": "/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-1",
+  "new_worktree": "/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-004-2",
+  "interruption": "Controlled stop after writing an unfinished real document; a separate author session resumed attempt 2."
+}

@@ -1,5 +1,7 @@
 # agentctl 操作手册
 
+第一次使用先看 [快速上手](agentctl-quickstart.md)；会话中断时看 [恢复指南](agentctl-recovery.md)。
+
 在包含第二阶段代码的 checkout 运行 `python3 scripts/agentctl.py --help`。
 可用 `--repo <checkout>` 指定仓库；linked worktree 自动共享同一个台账。
 首次运行 `python3 scripts/agentctl.py init`。Python 3.9+ 和 Git 即可，无额外包。
