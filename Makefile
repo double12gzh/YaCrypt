@@ -98,11 +98,14 @@ security: audit ## 安全扫描
 .PHONY: dev
 dev: ## 设置开发环境
 	@echo "Setting up development environment..."
-	@sh setup-dev.sh
+	@bash setup-dev.sh
 	@echo "Development environment ready!"
 
-.PHONY: all
-all: fmt clippy test security rebuild
+.PHONY: verify all
+verify: ## 全工作区质量门禁（不清理构建产物）
+	bash scripts/verify.sh
+
+all: verify
 
 # 显示帮助信息
 .PHONY: help

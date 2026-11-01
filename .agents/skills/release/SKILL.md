@@ -10,22 +10,16 @@ description: >-
 
 Prepare a new release of `yacrypt` following these steps:
 
-1. **Run Dependency & Vulnerability Audit**:
-   ```bash
-   cargo deny check
-   ```
-2. **Run Quality & Test Suite**:
-   ```bash
-   cargo fmt -- --check && cargo clippy --all-targets -- -D warnings && cargo test
-   ```
+1. **Run the shared gate**: `bash scripts/verify.sh`. Stop on any failure.
+2. **Record evidence** using [the acceptance template](../../../docs/templates/acceptance.md).
 3. **Determine Target Version**:
    - Read the current version from `Cargo.toml` using the file viewing tool (never use bare `cat`).
    - Ask the user for the new target version number.
 4. **Update Version**:
    - Update `version = "<new_version>"` in `Cargo.toml`.
-5. **Build Release Binary**:
+5. **Re-run `bash scripts/verify.sh` after the version/lockfile changes, then build the release binary**:
    ```bash
-   cargo build --release
+   cargo build --locked --workspace --release
    ```
 6. **Verify Binary Size**:
    ```bash

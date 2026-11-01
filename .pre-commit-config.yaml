@@ -1,27 +1,9 @@
 repos:
   - repo: local
     hooks:
-      - id: rust-fmt
-        name: rustfmt
-        entry: cargo fmt -- --check
+      - id: yacrypt-verify
+        name: YaCrypt workspace verification
+        entry: bash scripts/verify.sh
         language: system
         pass_filenames: false
-        
-      - id: rust-clippy
-        name: clippy
-        entry: cargo clippy --all-targets -- -D warnings
-        language: system
-        pass_filenames: false
-        
-      - id: rust-test
-        name: test
-        entry: cargo test
-        language: system
-        pass_filenames: false
-        
-      # - id: cargo-audit
-      #   name: audit
-      #   entry: cargo audit
-      #   language: system
-      #   pass_filenames: false
-      #   args: ["--ignore", "RUSTSEC-2023-0001"]
+        always_run: true

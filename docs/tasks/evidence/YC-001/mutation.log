@@ -1,0 +1,46 @@
+Mutation: remove --workspace from the gate in a temporary copy
+test_member_failure_is_not_hidden_by_root_package (__main__.VerificationTests.test_member_failure_is_not_hidden_by_root_package) ... FAIL
+
+======================================================================
+FAIL: test_member_failure_is_not_hidden_by_root_package (__main__.VerificationTests.test_member_failure_is_not_hidden_by_root_package)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/var/folders/dw/mb58tlxs7yb6w09n_9m_whz00000gn/T/yacrypt-mutation-t0xgtsqz/scripts/test_verify.py", line 72, in test_member_failure_is_not_hidden_by_root_package
+    self.assertNotEqual(broken.returncode, 0, broken.stdout)
+AssertionError: 0 == 0 : 
+>>> python3 scripts/test_verify.py
+
+>>> cargo fmt --all -- --check
+
+>>> cargo clippy --locked --all-targets --all-features -- -D warnings
+
+>>> cargo test --locked --all-features
+warning: `/Users/jeffreyguan/.cargo/config` is deprecated in favor of `config.toml`
+  |
+  = help: if you need to support cargo 1.38 or earlier, you can symlink `config` to `config.toml`
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/lib.rs (/var/folders/dw/mb58tlxs7yb6w09n_9m_whz00000gn/T/yacrypt-verify-pjtm3bdx/repo with spaces/target/debug/deps/gate_root-f809c4bddd9de678)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests gate_root
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+>>> cargo build --locked --all-features
+
+>>> cargo deny --locked check
+VERIFY PASS
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.775s
+
+FAILED (failures=1)
+
+exit=1

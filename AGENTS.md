@@ -4,23 +4,19 @@
 
 ---
 
+修改前读取 [工程规范](docs/code-standards.md)、[近期教训](LESSONS.md)，
+并按 [子系统索引](docs/subsystems/README.md) 阅读受影响契约和链接源码。
+执行任务时按 [协作流程](docs/agent-workflow.md) 建立任务卡、独立验收和复盘记录。
+接口、状态、失败或兼容性行为改变时，同一变更更新对应子系统文档。
+
 ## 1. 项目架构与开发指南
 
 ### 1.1 构建、测试与质量门禁命令
 
-```bash
-cargo build --workspace                              # Debug 构建（含 yacrypt-core 与 yacrypt CLI/TUI）
-cargo build --release                                # Release 构建（opt-level="z", LTO, strip, panic=abort）
-cargo test --workspace                               # 运行所有单元测试、TUI 无头渲染测试与 PTY 集成测试
-cargo test -p yacrypt-core crypto::tests::           # 仅运行 yacrypt-core 的 crypto 模块测试
-cargo test <test_name>                               # 运行单个指定测试
-cargo clippy --workspace --all-targets -- -D warnings # Clippy 静态检查（含所有 crate 与测试目标，将警告视为错误）
-cargo fmt --all -- --check                           # 检查全工作区代码格式
-cargo deny check                                     # 依赖许可证与安全漏洞审计
-make all                                             # 单实例全量构建：fmt + clippy + test + security + rebuild（含 clean，多 Agent 并发时勿用）
-```
-
-> **质量门禁**：`pre-commit` 钩子会自动执行 `cargo fmt -- --check`、`cargo clippy --all-targets -- -D warnings` 和 `cargo test`（亦可通过 `/check` 技能一键触发）。任何代码变更在提交前必须确保上述检查全部通过。
+完整门禁统一运行 `bash scripts/verify.sh`（或 `make verify` / `make all`）。
+依赖、分项调试命令及证据格式见 [验证说明](docs/verification.md)。
+`/check`、CI、原生 hook 和 pre-commit 配置均调用这个入口。
+提交前运行完整门禁；单项 Cargo 命令用于定位问题，不能替代完整验收。
 
 ### 1.2 模块依赖流（Hybrid Cargo Workspace）
 
@@ -68,10 +64,10 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
 修改任何涉及加解密、密钥管理、TUI 状态或文件 I/O 的代码时，**严禁破坏**以下安全红线：
 1. **先验签、后落盘**：解密文件时，Ed25519 签名验证**必须**在向磁盘写入任何明文之前完成；验签失败必须立即中止并拒绝输出任何数据。
 2. **敏感数据即时擦除**：所有口令（含 TUI 口令输入缓冲区 `Zeroizing<String>`）、私钥、派生密钥、共享密钥等敏感材料必须使用 `zeroize::Zeroize`（或 `Zeroizing` 包装器），在用毕、弹窗关闭或报错后立即清零。
-3. **最小权限与原子同步**：私钥与敏感输出文件写入必须通过 `write_file_strict` 显式设置权限 `mode(0o600)`、`O_NOFOLLOW` 并调用 `sync_all()`，防止 TOCTOU 竞态条件、符号链接跟随或权限泄露。
+3. **最小权限与同步写入**：私钥与敏感输出文件写入必须通过 `write_file_strict` 显式设置权限 `mode(0o600)`、`O_NOFOLLOW` 并调用 `sync_all()`，限制符号链接跟随与权限泄露。当前为直接写入；`sync_all()` 不构成崩溃原子替换保证，详见 [存储契约](docs/subsystems/storage.md)。
 4. **Argon2 参数硬上限校验**：从外部密文解析 Argon2 参数（内存成本 `m_cost`、迭代次数 `t_cost`、并行度 `p_cost`）时，必须在派生前严格校验硬上限，防止恶意构造的密文头触发 OOM 拒绝服务。
 5. **AAD 最小暴露绑定与域分离**：AAD 仅绑定解密必需的安全关键字段（如 `fp`、`type`、`flags`、`ephemeral_pub`、`sig_vk`），这些字段的篡改或跨类型混用（如拿私钥备份当普通对称文件解密）必须导致失败；**严禁**将低熵个人信息（姓名、邮箱、文件名等）或其明文哈希写入 AAD——低熵摘要可被字典还原（2026-10-18 复审 M-3 收口）。
-6. **防 Swap 内存锁定**：在 Linux 环境下保持启动时调用 `try_mlockall()`，防止敏感内存页被交换到磁盘。
+6. **防 Swap 内存锁定**：在 Linux 环境下保持启动时调用 `try_mlockall()`，尝试锁定当前内存页；失败会告警，不能据此承诺全部敏感内存永不交换。
 
 ### 1.6 CLI 子命令入口对照表
 
@@ -152,8 +148,8 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
    * 若使用 Claude Code 原生隔离模式，可直接运行 `claude -w {name}`（对应 `.claude/worktrees/{name}`）。
    * 动手修改代码前，先通过 `git branch --show-current` 确认当前所在分支与分配的任务范围一致。
 2. **严禁破坏性构建清理（防 `target/` 踩踏）**：
-   * 多 Agent 并发期间，**严禁**执行 `cargo clean`、`make clean`、`make rebuild` 或 `make all`（否则会直接清空其他正在编译或测试的 Agent 的 `target/` 目录）。
-   * 日常质量验证统一按 `/check` 技能顺序执行：`cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && cargo deny check`。
+   * 多 Agent 并发期间，**严禁**执行 `cargo clean`、`make clean` 或 `make rebuild`（否则会直接清空其他正在编译或测试的 Agent 的 `target/` 目录）。
+   * 日常质量验证统一按 `/check` 技能顺序执行：`bash scripts/verify.sh`。
 3. **模块边界与危险 Git 命令禁令**：
    * 仅修改当前任务分配的模块文件，未经用户明确指示，严禁执行跨模块全局格式化或擅自升级 `Cargo.toml` 依赖。
    * 未经用户显式确认，**严禁**执行 `git reset --hard`、`git clean -fd`、`git checkout -- .`、`git restore .` 或 `git push --force`。

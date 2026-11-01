@@ -1,0 +1,30 @@
+# 验证与证据
+
+## 完整入口
+
+从仓库根目录运行 `bash scripts/verify.sh` 或 `make verify`。脚本也支持通过绝对路径从其他目录运行。
+需要 Bash、Python 3.9+、Rust/Cargo（rustfmt、clippy）和 cargo-deny 0.20.2。
+工具缺失时先安装到明确的工具目录（例如 `cargo install cargo-deny --version 0.20.2 --locked --root <目录>`），
+再将其 bin 加入 PATH；不要把缺失步骤当作通过。脚本不会自动安装。
+Cargo 依赖及 RustSec 数据库初次获取需要网络；审计不可达是阻塞，不是干净结果。
+
+源码依赖使用 Cargo.lock，Cargo 检查带 --locked；审计数据库仍会随时间变化。
+报告记录工具版本、平台和审计时间，不承诺不同日期有相同审计结果。
+
+## 隔离和记录
+
+- 每个写入会话独占 `.worktrees/<task>`；构建默认使用该 worktree 的 target。
+  如果环境设置了共享 CARGO_TARGET_DIR，改为该任务独立目录后运行。
+- 测试使用临时数据与测试口令，不操作真实 keystore。更改测试前核对其文件/子进程清理。
+- 记录 base/head SHA；未提交阶段记录 base SHA、差异及新增文件的内容哈希清单。
+  最终独立审查绑定实际提交，后续实现修改使原结论失效。
+- 保留命令、退出码、关键输出及完整日志位置；只有完整入口退出 0 才能写完整门禁通过。
+- 修复类任务应在临时副本撤销修复或注入故障，看到针对行为的失败，再恢复并通过。
+  编译错误、跳过测试、工具缺失均不能充当行为失败证据。
+
+## 补充验证
+
+分项 `cargo test -p yacrypt-core <filter>` 用于诊断，不能替代完整门禁。
+密码学、存储、CLI/TUI 的风险场景见 [子系统索引](subsystems/README.md)。
+验收报告必须列出未运行平台、真实终端/发布资产等缺口。
+首次任务及证据见 [YC-001](tasks/YC-001.md)。

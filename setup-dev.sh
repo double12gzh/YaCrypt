@@ -25,21 +25,7 @@ for tool in "${TOOLS[@]}"; do
     fi
 done
 
-# 创建 git hooks
-echo "Setting up git hooks..."
-if [ -d .git ]; then
-    \cat > .git/hooks/pre-commit << 'EOF'
-#!/bin/bash
-set -e
-cargo fmt -- --check
-cargo clippy --all-targets -- -D warnings
-cargo test --locked
-if command -v cargo-audit >/dev/null 2>&1; then
-    cargo audit
-fi
-EOF
-    chmod +x .git/hooks/pre-commit
-    echo "✅ Git hooks configured"
-fi
+# Resolve the repository from this script, including when invoked from a worktree.
+bash "$(dirname "${BASH_SOURCE[0]}")/scripts/install-hook.sh"
 
 echo "Development environment ready!"

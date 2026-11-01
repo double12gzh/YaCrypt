@@ -5,28 +5,12 @@ description: >-
   or check formatting, clippy lints, unit tests, and cargo-deny audits before committing.
 ---
 
-# Pre-Commit Quality Gate (`check`)
+# Workspace quality gate
 
-Run the full pre-commit quality gate in strict sequence:
+Run `bash scripts/verify.sh` from the repository root. This is the same gate
+used by CI and both pre-commit entry points. See [verification](../../../docs/verification.md)
+for prerequisites and evidence requirements (resolve this link from the skill directory).
 
-1. **Formatting Check**:
-   ```bash
-   cargo fmt --all -- --check
-   ```
-2. **Clippy Lint Check**:
-   ```bash
-   cargo clippy --workspace --all-targets -- -D warnings
-   ```
-3. **Test Suite**:
-   ```bash
-   cargo test --workspace
-   ```
-4. **Dependency & Vulnerability Audit**:
-   ```bash
-   cargo deny check
-   ```
-   If `cargo-deny` is missing (`cargo deny` → `no such command`), install it with `cargo install cargo-deny --locked`, or run `make security`, which auto-installs it before checking.
-
-## Validation Rules
-- Execute each step sequentially.
-- If any step fails, immediately report the error output and stop. Do not proceed to the next step until the failure is resolved.
+Stop on failure. Report the failing stage and exit status; a missing tool or
+unavailable advisory database is blocked verification, never a pass.
+Do not install tools or change audit policy silently to make the result green.
