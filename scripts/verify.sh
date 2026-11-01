@@ -11,6 +11,7 @@ run() {
     "$@"
 }
 run python3 scripts/test_verify.py
+run python3 scripts/test_agentctl.py
 run cargo fmt --all -- --check
 run cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 run cargo test --locked --workspace --all-features

@@ -28,3 +28,4 @@ Cargo 依赖及 RustSec 数据库初次获取需要网络；审计不可达是�
 密码学、存储、CLI/TUI 的风险场景见 [子系统索引](subsystems/README.md)。
 验收报告必须列出未运行平台、真实终端/发布资产等缺口。
 首次任务及证据见 [YC-001](tasks/YC-001.md)。
+统一入口同时运行 scripts/test_agentctl.py，验证真实临时 Git/SQLite 的协作状态与隔离。

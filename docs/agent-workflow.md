@@ -1,7 +1,8 @@
-# 第一阶段协作流程
+# Agent 协作流程
 
 适用于 agy / Codex / pi / omp；工具只负责执行，项目文件保存任务和知识。
-本阶段手动启动会话，无自动领取、定时运行、自动合并或发布。
+会话手动启动，无定时运行、自动合并或发布。第二阶段使用 [agentctl](agentctl.md)
+持久保存领取、尝试、证据和集成状态；接口及失败语义见 [台账契约](subsystems/coordination.md)。
 
 1. 协调者复制 [任务卡](templates/task.md) 到 `docs/tasks/<id>.md`，写清来源、目标、验收、
    风险、base SHA、路径范围、owner、时间/重试预算与权限。无验收条件不进入就绪。

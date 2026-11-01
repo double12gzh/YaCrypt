@@ -20,6 +20,7 @@ class VerificationTests(unittest.TestCase):
         shutil.copy(ROOT / "scripts/verify.sh", self.root / "scripts/verify.sh")
         # Avoid recursively running this suite in the fixture gate.
         (self.root / "scripts/test_verify.py").write_text("pass\n")
+        (self.root / "scripts/test_agentctl.py").write_text("pass\n")
         self.bin = Path(self.temp.name) / "bin"
         self.bin.mkdir()
         self.log = Path(self.temp.name) / "calls"

@@ -1,0 +1,10 @@
+{
+  "id": "YC-EXAMPLE",
+  "source": "填写问题来源和证据",
+  "goal": "填写可观察的完成结果",
+  "non_goals": "填写不改的行为",
+  "acceptance": ["填写场景、命令和期望结果"],
+  "allowed_paths": ["docs/example.md"],
+  "depends_on": [],
+  "max_attempts": 3
+}
