@@ -38,11 +38,27 @@ integrated 必须连同 integrated_target 阅读；集成到试验分支不等�
 
 ## 工具边界与验证
 
-agy / Codex / pi / omp 首版共用手动适配器：handoff → 在指定 worktree 启动独立会话 →
-外部日志/本地提交 → submit。harness 字段只是运行工具标签，不对应未验证的自动启动 API。
-观察用 show/list/queue；停止由操作者完成，recover 的 --stopped 是明确确认。
-不提供后台唤醒、自动合并、推送、发布、模型调用或强杀进程。
+agy 已提供显式 `run` 适配器，源码为 [agy_runner.py](../../scripts/agy_runner.py)，操作见
+[agy 运行说明](../agy-runner.md)。它实际查询模型目录、启动 print 子进程，并持久保存请求模型、
+运行参数、conversation_id、退出码、用量、日志哈希与状态；不再只记录工具标签。
+Codex / pi / omp 仍使用手动 handoff，本轮未实现它们的自动进程适配器。
+
+run 在数据库中先保留 active_run，再启动独立进程组；有效执行租约必须覆盖超时及清理余量。
+active_run 阻止重复运行和手动 submit/review。异常退出时保留失败回执；监督进程被强杀时可能
+留下 starting/running，操作者必须先停止旧进程组，再 recover --stopped，新结果由尝试和 run ID 隔离。
+超时、SIGINT/SIGTERM 会终止所创建的进程组；不承诺控制自行脱离该组的进程。
+日志位于 common Git dir/agentctl/runs，保留原始结果但不自动加入 Git。
+
+执行模型使用 accept-edits + sandbox，验收模型使用 plan + sandbox。这些是 agy 策略，
+不是本 CLI 提供的 OS 权限沙箱。验收完成还核对工作区未改变、提交未漂移，失败时保留现场。
+跨模型验收要求本次尝试有成功执行回执，并且模型 ID 除 effort 后不同；不把 high/low 当作不同模型。
+agy JSON 当前不返回可证明的后端模型身份，所以 requested_model 表示明确传入且被服务接受的选择，
+不能冒称独立验证了服务内部实际使用的模型。运行成功也不等于任务通过，review 回执须由协调者检查后
+用原 review 命令写入判定；agy 任务要求回执的 actor/head/verdict 和 response 哈希匹配，不能用任意手写报告代替。
+提交也必须匹配成功执行后的文件快照，协调者修改产物后需重新执行。不会自动批准、合并或发布。
 
 [test_agentctl.py](../../scripts/test_agentctl.py) 使用隔离 HOME/Git 配置及真实临时仓库，覆盖并发、
 重启、租约、创建中断、旧结果隔离、范围/脏状态、独立评审、版本变化、串行集成和证据快照。
 统一门禁调用该测试；任务演练见 [YC-002](../tasks/YC-002.md)。
+
+[运行器测试](../../scripts/test_agy_runner.py) 使用本地假 agy 子进程验证参数、失败、交叉模型、超时和进程组清理；真实模型演练单独记录，测试不访问模型服务。

@@ -29,3 +29,5 @@ Cargo 依赖及 RustSec 数据库初次获取需要网络；审计不可达是�
 验收报告必须列出未运行平台、真实终端/发布资产等缺口。
 首次任务及证据见 [YC-001](tasks/YC-001.md)。
 统一入口同时运行 scripts/test_agentctl.py，验证真实临时 Git/SQLite 的协作状态与隔离。
+
+运行器回归 scripts/test_agy_runner.py 使用本地假进程，不访问真实 agy 或模型服务；完整门禁包含该检查。

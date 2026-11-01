@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local, cooperative task coordination. No daemon, agent launcher or automatic merge."""
+"""Local, cooperative task coordination. No daemon or automatic merge; explicit supervised agy runs."""
 import argparse
 from contextlib import contextmanager
 import hashlib
@@ -184,9 +184,12 @@ class Ledger:
             task = self.task(name)
             require(task['state'] in ('provisioning', 'running', 'review', 'approved'), 'Task cannot be recovered')
             require(not self.reservation_for(name), 'Release integration reservation first')
+            if task.get('active_run'):
+                task['runs'][-1]['state'] = 'abandoned'
+                self.save(task, 'run_abandoned', {'id': task.pop('active_run'), 'stopped_confirmed': True})
             self.save(task, 'attempt_closed', {'attempt': task['attempt'], 'worktree': task.get('worktree'),
                                              'reason': reason, 'stopped_confirmed': True})
-            for key in ('token', 'expires', 'head', 'submission', 'review'):
+            for key in ('token', 'expires', 'head', 'submission', 'review', 'execution_run'):
                 task.pop(key, None)
             task['state'] = 'ready'
             self.save(task, 'recovered')
@@ -203,6 +206,7 @@ class Ledger:
         proof = evidence(report)
         with self.transaction():
             task = self.leased(name, token)
+            require(not task.get('active_run'), 'Wait for the active run to stop before submitting')
             require(task['state'] in ('running', 'review', 'approved'), 'Task cannot submit')
             require(not self.reservation_for(name), 'Release integration reservation before resubmitting')
             require(self.current_head(task) == head, 'Submission must match current clean worktree HEAD')
@@ -211,6 +215,13 @@ class Ledger:
             for path in filter(None, files):
                 require(any(path == p.rstrip('/') or path.startswith(p.rstrip('/') + '/')
                             for p in task['allowed_paths']), 'Out-of-scope path: ' + path)
+            if task['harness'] == 'agy':
+                from agy_runner import worktree_digest
+                runs = [r for r in task.get('runs', []) if r['role'] == 'execute'
+                        and r['attempt'] == task['attempt'] and r['state'] == 'succeeded']
+                require(runs and runs[-1].get('worktree_digest') == worktree_digest(task['worktree']),
+                        'Submission differs from the successful agy execution snapshot')
+                task['execution_run'] = runs[-1]['id']
             task.update(state='review', head=head, submission=proof)
             task.pop('review', None)
             self.save(task, 'submitted')
@@ -220,10 +231,21 @@ class Ledger:
         proof = evidence(report)
         with self.transaction():
             task = self.task(name)
+            require(not task.get('active_run'), 'Wait for the active review run to stop')
             require(task['state'] == 'review', 'Task is not awaiting review')
             require(reviewer.strip() and reviewer != task['owner'], 'Independent reviewer identity required')
             require(task['head'] == head == self.current_head(task), 'Review is stale; resubmit current head')
+            run_proof = None
+            if task['harness'] == 'agy':
+                runs = [r for r in task.get('runs', []) if r['role'] == 'review'
+                        and r['attempt'] == task['attempt'] and r['state'] == 'succeeded'
+                        and r['actor'] == reviewer and r['review']['head'] == head
+                        and r['review']['verdict'] == verdict and r['response.txt_sha256'] == proof['sha256']]
+                require(runs, 'agy review requires matching cross-model runtime evidence')
+                run_proof = {k: runs[-1][k] for k in ('id', 'requested_model', 'conversation_id')}
             task['review'] = dict(reviewer=reviewer, head=head, verdict=verdict, evidence=proof)
+            if run_proof:
+                task['review']['run'] = run_proof
             task['state'] = 'approved' if verdict == 'PASS' else 'running'
             self.save(task, 'reviewed')
         return self.public(task)
@@ -334,6 +356,9 @@ def parser():
     a.add_argument('--integrator', required=True)
     a = sub.add_parser('finish'); a.add_argument('--token', required=True); a.add_argument('--head', required=True)
     a.add_argument('--evidence', required=True)
+    a = sub.add_parser('run'); a.add_argument('id'); a.add_argument('--role', choices=['execute','review'], required=True)
+    a.add_argument('--model', required=True); a.add_argument('--actor', required=True); a.add_argument('--token')
+    a.add_argument('--seconds', type=int, default=300); a.add_argument('--instructions')
     a = sub.add_parser('release'); a.add_argument('--token', required=True); a.add_argument('--reason', required=True)
     return p
 
@@ -362,6 +387,11 @@ def main():
         elif args.cmd == 'review': result = ledger.review(args.id, args.reviewer, args.head, args.verdict, args.evidence)
         elif args.cmd == 'reserve': result = ledger.reserve(args.id, args.target, args.integrator)
         elif args.cmd == 'finish': result = ledger.finish(args.token, args.head, args.evidence)
+        elif args.cmd == 'run':
+            from agy_runner import execute
+            result = execute(ledger, args.id, args.role, args.model, args.actor, args.token, args.seconds, args.instructions)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0 if result['state'] == 'succeeded' else 1
         elif args.cmd == 'release': result = ledger.release(args.token, args.reason)
         print(json.dumps(result, ensure_ascii=False, indent=2))
     except (Error, OSError, ValueError, sqlite3.Error) as exc:

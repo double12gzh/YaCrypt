@@ -1,5 +1,7 @@
 # agentctl 操作手册
 
+真实 agy 执行和不同模型验收见 [运行器说明](agy-runner.md)。
+
 第一次使用先看 [快速上手](agentctl-quickstart.md)；会话中断时看 [恢复指南](agentctl-recovery.md)。
 
 在包含第二阶段代码的 checkout 运行 `python3 scripts/agentctl.py --help`。

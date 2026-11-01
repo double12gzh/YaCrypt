@@ -1,0 +1,45 @@
+# 用 agy 实际执行与跨模型验收
+
+先确认项目内容允许交给所使用的模型服务。运行器不会读取认证文件；agy 使用本机已有登录状态。
+本版支持 POSIX 进程组，需要可执行的 `agy`。`agy models` 返回当前账号模型目录，目录可见不等于调用一定成功。
+
+## 执行
+
+按 [agentctl 手册](agentctl.md) 建任务，以 `--harness agy` 领取；保存返回的 token 和 worktree。
+任务只允许对应 owner 写入。运行：
+
+```bash
+python3 scripts/agentctl.py run YC-EXAMPLE --role execute --model gemini-4-argon-high --actor author-session --token '<claim-token>' --seconds 300
+```
+
+此命令会真正启动 agy。模型 ID 必须来自本机目录；示例值来自 2026-11-01 的本机探测，未来请重新查询。
+执行租约必须比超时多至少 5 秒，必要时先 renew。可用 `--instructions /tmp/task-notes.txt` 增补任务要求，
+但不得扩展任务权限。提示词包含目标、范围和验收，不含 claim token。
+模型被要求不提交、合并或推送；协调者检查 diff、运行完整门禁，再按人类 Git 身份提交和 submit。submit 校验成功执行后的文件快照；
+若协调者修改了产物，需重新执行取得新快照，不能把修改归功于旧模型运行。
+
+## 不同模型验收
+
+提交进入 review 后，以不同会话标识和不同模型运行：
+
+```bash
+python3 scripts/agentctl.py run YC-EXAMPLE --role review --model claude-sonnet-5-5-medium --actor reviewer-session --seconds 300
+```
+
+验收者读取真实提交和 base diff；返回 head、verdict、findings 和 checks。只有 effort 不同会被拒绝。
+如果输出格式不正确、提交不匹配或工作区被修改，运行失败且不会批准任务。
+返回 receipt 中含 review 结构和日志目录。协调者检查完整结果后，用 `review --head ... --verdict ... --evidence <response.txt>`
+记录实际判定；agy 任务会核对 response.txt 的哈希及 actor/head/verdict，手写替代报告会被拒绝。不要仅凭 status=succeeded 填 PASS。运行器不自动合并或发布。
+
+## 观察与停止
+
+run 前台运行，另一个终端可用 `show <id>` 查看 active_run、pid、请求模型及持久回执。
+超时和 Ctrl-C/SIGTERM 会清理本次进程组，保留 stdout/stderr/prompt/receipt。
+监督进程被 SIGKILL 或机器中断后，先查现场、停止实际进程组，再 recover --stopped；不根据过期 PID 盲目杀进程。
+失败后的部分文件保留，不自动还原。先复查 diff，再恢复新尝试或确认修正后重新运行。
+
+本地日志可能含项目内容，原始日志不自动进 Git；归档前只选择必要的脱敏证据。
+回执记录 requested_model、明确 argv、conversation_id 和用量。agy 当前 JSON 未提供后端模型认证字段；
+“使用某模型”在本工具中指显式请求并被 agy 服务接受，不是后端身份的独立证明。
+
+共享 .git 目录不暴露给模型。协调器验证分支和SHA，将仅本次任务diff放入验收提示词；模型读取源码，不能自行访问完整Git历史。
