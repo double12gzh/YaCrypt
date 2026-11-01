@@ -31,6 +31,8 @@ if args == ['models']:
     sys.exit(0)
 if '--disable-slash-commands' in args:
     sys.exit('mode would be disabled')
+settings = json.loads(args[args.index('--settings') + 1])
+assert settings == {'permissions': {'allow': ['command(python3 scripts/test_agentctl.py)', 'command(python3 scripts/test_agy_runner.py)']}}
 kind = os.environ.get('FAKE_AGY', 'success')
 if kind == 'hang':
     child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])

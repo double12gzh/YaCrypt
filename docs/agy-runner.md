@@ -43,3 +43,7 @@ run 前台运行，另一个终端可用 `show <id>` 查看 active_run、pid、�
 “使用某模型”在本工具中指显式请求并被 agy 服务接受，不是后端身份的独立证明。
 
 共享 .git 目录不暴露给模型。协调器验证分支和SHA，将仅本次任务diff放入验收提示词；模型读取源码，不能自行访问完整Git历史。
+
+无交互调用通过 `--settings` 仅为本次会话允许两条命令：`python3 scripts/test_agentctl.py`、
+`python3 scripts/test_agy_runner.py`。不修改全局权限，不跳过权限检查。其他命令需要协调者运行，
+不得通过拼接 shell 命令扩展权限；出现 denied_actions 或空答复即失败，即使 agy 标记 SUCCESS。
