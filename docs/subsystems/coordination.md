@@ -14,7 +14,7 @@ owner/reviewer 是操作者声明的会话标识；检查二者不同，但不�
 
 ## 状态与中断
 
-`ready → provisioning → running → review → approved → integrated`。
+`ready → provisioning → running → review → approved → integrated`（评审 `ISSUES` 返回 `running`，`BLOCKED` 进入 `blocked`）。
 领取使用 BEGIN IMMEDIATE 原子保留任务、尝试编号和随机令牌，再创建独占 worktree；
 Git 与 SQLite 不是跨系统事务。创建中断会保留 provisioning，必须人工确认旧会话停止后 recover。
 恢复只使任务重新 ready，保留旧 worktree、分支和事件；新尝试使用新路径及新令牌。
@@ -22,7 +22,8 @@ Git 与 SQLite 不是跨系统事务。创建中断会保留 provisioning，必�
 同任务默认最多 3 次尝试，耗尽后停止；任务依赖必须已 integrated 且集成提交包含在所选 base 中。
 
 submit 检查有效令牌/租约、干净工作区、实际分支/HEAD、base 祖先关系和允许路径。
-验收绑定提交，作者与验收者标识必须不同；ISSUES/BLOCKED 返回 running，并保留评审原因。
+验收绑定提交，作者与验收者标识必须不同；PASS 进入 approved，ISSUES 返回 running 并保留评审原因，BLOCKED 持久化为 blocked。
+blocked 任务拒绝 renew、submit 和执行运行（run --role execute），直至人工确认旧会话停止后显式 recover --stopped 回到 ready；下次 claim 创建新尝试与新令牌，历史评审证据保留在事件中。
 批准后若工作区 HEAD/内容变化，queue 显示 eligible=false，reserve 拒绝；重新 submit 清除旧评审。
 approved 表示历史批准，不能单独当作当前可集成证明。
 

@@ -1,0 +1,196 @@
+diff --git i/docs/agentctl-recovery.md w/docs/agentctl-recovery.md
+index 2704883..f3acc9d 100644
+--- i/docs/agentctl-recovery.md
++++ w/docs/agentctl-recovery.md
+@@ -20,6 +20,7 @@ python3 scripts/agentctl.py integration
+ | 现场 | 下一步 |
+ | --- | --- |
+ | `running`，会话仍活跃且租约有效 | 原 owner 可用 `renew` 续租，不启动第二个写入者 |
++| `blocked`（评审判定 `BLOCKED`） | `renew` / `submit` / `run --role execute` 均被拒绝；确认旧会话停止后 `recover --stopped`，再 `claim` 新尝试（历史事件保留阻塞评审证据） |
+ | 租约已过期，或会话已退出 | 确认旧会话停止后 `recover`，再 `claim` 新尝试 |
+ | `provisioning` 中断 | 确认创建进程停止，保留已有路径和分支，再 `recover` |
+ | 有该任务的集成槽 | 先由集成人处理或释放槽；`recover` 会拒绝占槽中的任务 |
+diff --git i/docs/agentctl.md w/docs/agentctl.md
+index 13a1c32..a4b9b5f 100644
+--- i/docs/agentctl.md
++++ w/docs/agentctl.md
+@@ -39,12 +39,14 @@ python3 scripts/agentctl.py queue
+ 
+ 实现者先运行统一门禁并本地提交，再 submit；证据文件放在 worktree 外以保持工作区干净。
+ 评审者依据任务和实际代码独立检查；PASS/ISSUES/BLOCKED 都需证据。
++PASS 进入 `approved`；ISSUES 退回 `running` 由当前尝试继续修复后重新 submit；
++BLOCKED 进入 `blocked` 并保留评审证据，拒绝继续 renew/submit/handoff/run，须确认旧会话停止后显式 `recover --stopped`。
+ 新提交使旧批准不可集成，重新 submit/review。超时不要更改系统时间或无限续期；确认状态后处理。
+ 任务和事件包含工作产物，证据只写测试材料，不写真实口令/私钥。
+ 
+ ## 中断与集成
+ 
+-领取租约到期或进程退出后，先停止并确认旧会话不会继续写入，再执行：
++领取租约到期、进程退出或评审判定 `BLOCKED` 后，先停止并确认旧会话不会继续写入，再执行：
+ 
+ ```bash
+ python3 scripts/agentctl.py recover YC-EXAMPLE --stopped --reason '旧会话已结束，保留草稿后接手'
+diff --git i/docs/subsystems/coordination.md w/docs/subsystems/coordination.md
+index dcca00e..d028bc9 100644
+--- i/docs/subsystems/coordination.md
++++ w/docs/subsystems/coordination.md
+@@ -14,7 +14,7 @@ owner/reviewer 是操作者声明的会话标识；检查二者不同，但不
+ 
+ ## 状态与中断
+ 
+-`ready → provisioning → running → review → approved → integrated`。
++`ready → provisioning → running → review → (approved → integrated | blocked)`。
+ 领取使用 BEGIN IMMEDIATE 原子保留任务、尝试编号和随机令牌，再创建独占 worktree；
+ Git 与 SQLite 不是跨系统事务。创建中断会保留 provisioning，必须人工确认旧会话停止后 recover。
+ 恢复只使任务重新 ready，保留旧 worktree、分支和事件；新尝试使用新路径及新令牌。
+@@ -22,7 +22,8 @@ Git 与 SQLite 不是跨系统事务。创建中断会保留 provisioning，必
+ 同任务默认最多 3 次尝试，耗尽后停止；任务依赖必须已 integrated 且集成提交包含在所选 base 中。
+ 
+ submit 检查有效令牌/租约、干净工作区、实际分支/HEAD、base 祖先关系和允许路径。
+-验收绑定提交，作者与验收者标识必须不同；ISSUES/BLOCKED 返回 running，并保留评审原因。
++验收绑定提交，作者与验收者标识必须不同；PASS 进入 approved，ISSUES 返回 running 并保留评审原因，
++BLOCKED 进入 blocked、保留评审证据并拒绝 renew/submit/handoff/execute，直到显式 `recover --stopped` 后下次 claim 创建新尝试。
+ 批准后若工作区 HEAD/内容变化，queue 显示 eligible=false，reserve 拒绝；重新 submit 清除旧评审。
+ approved 表示历史批准，不能单独当作当前可集成证明。
+ 
+diff --git i/scripts/agentctl.py w/scripts/agentctl.py
+index 3650d13..bf05c0a 100644
+--- i/scripts/agentctl.py
++++ w/scripts/agentctl.py
+@@ -182,7 +182,7 @@ class Ledger:
+         require(stopped and reason.strip(), 'Confirm old session stopped and supply reason')
+         with self.transaction():
+             task = self.task(name)
+-            require(task['state'] in ('provisioning', 'running', 'review', 'approved'), 'Task cannot be recovered')
++            require(task['state'] in ('provisioning', 'running', 'review', 'blocked', 'approved'), 'Task cannot be recovered')
+             require(not self.reservation_for(name), 'Release integration reservation first')
+             if task.get('active_run'):
+                 task['runs'][-1]['state'] = 'abandoned'
+@@ -228,6 +228,7 @@ class Ledger:
+         return self.public(task)
+ 
+     def review(self, name, reviewer, head, verdict, report):
++        require(verdict in ('PASS', 'ISSUES', 'BLOCKED'), 'Invalid review verdict')
+         proof = evidence(report)
+         with self.transaction():
+             task = self.task(name)
+@@ -246,7 +247,7 @@ class Ledger:
+             task['review'] = dict(reviewer=reviewer, head=head, verdict=verdict, evidence=proof)
+             if run_proof:
+                 task['review']['run'] = run_proof
+-            task['state'] = 'approved' if verdict == 'PASS' else 'running'
++            task['state'] = {'PASS': 'approved', 'ISSUES': 'running', 'BLOCKED': 'blocked'}[verdict]
+             self.save(task, 'reviewed')
+         return self.public(task)
+ 
+diff --git i/scripts/test_agentctl.py w/scripts/test_agentctl.py
+index ec086b4..509def2 100644
+--- i/scripts/test_agentctl.py
++++ w/scripts/test_agentctl.py
+@@ -206,6 +206,106 @@ class LedgerTests(unittest.TestCase):
+         with self.assertRaisesRegex(Error, 'Duplicate'): self.add()
+         self.assertEqual(self.ledger.task('one')['state'], 'ready')
+ 
++    def test_blocked_verdict_fences_attempt_until_stopped_recovery_and_keeps_issues_pass(self):
++        from agy_runner import execute, worktree_digest
++        self.add()
++        first = self.ledger.claim('one', 'author', 'agy', 'main', 3600)
++        head1 = self.commit(first, content='attempt one\n')
++        blocked_report = Path(self.tmp.name) / 'blocked-review.md'
++        blocked_report.write_text('Blocked: upstream interface still undecided.\n')
++        with self.ledger.transaction():
++            task = self.ledger.task('one')
++            task['runs'] = [
++                dict(id='exec-1', role='execute', attempt=1, state='succeeded',
++                     actor='author', requested_model='gemini-test-high',
++                     worktree_digest=worktree_digest(first['worktree'])),
++                dict(id='rev-1', role='review', attempt=1, state='succeeded',
++                     actor='reviewer', requested_model='claude-test-medium',
++                     conversation_id='conv-blocked',
++                     review=dict(head=head1, verdict='BLOCKED'),
++                     **{'response.txt_sha256': __import__('hashlib').sha256(blocked_report.read_bytes()).hexdigest()}),
++            ]
++            self.ledger.save(task, 'fixture_runs')
++        self.ledger.submit('one', first['token'], head1, self.report)
++        reviewed = self.ledger.review('one', 'reviewer', head1, 'BLOCKED', blocked_report)
++        self.assertEqual(reviewed['state'], 'blocked')
++        self.assertEqual(reviewed['review']['verdict'], 'BLOCKED')
++        self.assertEqual(reviewed['review']['evidence']['text'], 'Blocked: upstream interface still undecided.\n')
++
++        with self.assertRaisesRegex(Error, 'running'):
++            self.ledger.renew('one', first['token'], 3600)
++        with self.assertRaisesRegex(Error, 'cannot submit'):
++            self.ledger.submit('one', first['token'], head1, self.report)
++        head1_followup = self.commit(first, content='attempt one unrecovered edit\n')
++        with self.assertRaisesRegex(Error, 'cannot submit'):
++            self.ledger.submit('one', first['token'], head1_followup, self.report)
++        with self.assertRaisesRegex(Error, 'running'):
++            self.ledger.handoff('one')
++        with patch('agy_runner.shutil.which', return_value='/usr/bin/true'), \
++             patch('agy_runner.available_models', return_value={'gemini-test-high': 'Gemini', 'claude-test-medium': 'Claude'}):
++            with self.assertRaisesRegex(Error, 'running'):
++                execute(self.ledger, 'one', 'execute', 'gemini-test-high', 'author', first['token'], 10)
++            with self.assertRaisesRegex(Error, 'submitted'):
++                execute(self.ledger, 'one', 'review', 'claude-test-medium', 'reviewer', None, 10)
++        with self.assertRaisesRegex(Error, 'not ready'):
++            self.claim()
++        with self.assertRaisesRegex(Error, 'Approval'):
++            self.ledger.reserve('one', 'main', 'integrator')
++        with self.assertRaisesRegex(Error, 'stopped'):
++            self.ledger.recover('one', False, 'still running')
++        with self.assertRaisesRegex(Error, 'reason'):
++            self.ledger.recover('one', True, '   ')
++        self.assertEqual(self.ledger.task('one')['state'], 'blocked')
++
++        recovered = self.cli('recover', 'one', '--stopped', '--reason', 'old blocked session stopped')
++        self.assertEqual(recovered.returncode, 0, recovered.stderr)
++        self.assertEqual(json.loads(recovered.stdout)['state'], 'ready')
++        current = self.ledger.task('one')
++        for cleared in ('token', 'expires', 'head', 'submission', 'review', 'execution_run'):
++            self.assertNotIn(cleared, current)
++
++        second = self.claim()
++        self.assertEqual(second['attempt'], 2)
++        self.assertEqual(second['state'], 'running')
++        self.assertNotEqual(second['token'], first['token'])
++        self.assertNotEqual(second['worktree'], first['worktree'])
++        self.assertTrue(Path(first['worktree']).exists())
++        with self.assertRaisesRegex(Error, 'Stale'):
++            self.ledger.renew('one', first['token'], 3600)
++        with self.assertRaisesRegex(Error, 'Stale'):
++            self.ledger.submit('one', first['token'], head1_followup, self.report)
++
++        head2 = self.commit(second, content='attempt two draft\n')
++        self.ledger.submit('one', second['token'], head2, self.report)
++        issues_report = Path(self.tmp.name) / 'issues-review.md'
++        issues_report.write_text('Issues: add missing edge-case assertion.\n')
++        after_issues = self.ledger.review('one', 'reviewer', head2, 'ISSUES', issues_report)
++        self.assertEqual(after_issues['state'], 'running')
++        self.assertEqual(after_issues['attempt'], 2)
++        self.assertEqual(after_issues['review']['verdict'], 'ISSUES')
++        self.assertEqual(self.ledger.renew('one', second['token'], 3600)['state'], 'running')
++        self.assertEqual(self.ledger.handoff('one')['task']['attempt'], 2)
++
++        head2_fixed = self.commit(second, content='attempt two fixed\n')
++        self.ledger.submit('one', second['token'], head2_fixed, self.report)
++        pass_report = Path(self.tmp.name) / 'pass-review.md'
++        pass_report.write_text('Pass: all checks verified.\n')
++        after_pass = self.ledger.review('one', 'reviewer', head2_fixed, 'PASS', pass_report)
++        self.assertEqual(after_pass['state'], 'approved')
++        self.assertEqual(after_pass['review']['verdict'], 'PASS')
++        self.assertEqual(self.ledger.queue(), [dict(id='one', head=head2_fixed, eligible=True)])
++
++        shown = json.loads(self.cli('show', 'one').stdout)
++        reviewed_events = [json.loads(e['body']) for e in shown['events'] if e['kind'] == 'reviewed']
++        self.assertEqual([e['state'] for e in reviewed_events], ['blocked', 'running', 'approved'])
++        self.assertEqual([e['review']['verdict'] for e in reviewed_events], ['BLOCKED', 'ISSUES', 'PASS'])
++        self.assertEqual(reviewed_events[0]['review']['evidence']['text'],
++                         'Blocked: upstream interface still undecided.\n')
++        self.assertEqual(reviewed_events[1]['review']['evidence']['text'],
++                         'Issues: add missing edge-case assertion.\n')
++        self.assertEqual(reviewed_events[2]['review']['evidence']['text'],
++                         'Pass: all checks verified.\n')
++
+ 
+ if __name__ == '__main__':
+     unittest.main(verbosity=2)

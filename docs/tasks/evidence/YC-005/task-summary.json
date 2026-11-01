@@ -1,0 +1,32 @@
+{
+  "id": "YC-006",
+  "state": "approved",
+  "attempt": 2,
+  "base": "5042e4b9452f6b6a62ded9fcab7c63455a171170",
+  "head": "fe2ea420ff0328ee8f3aaf88876f4497a5fa9753",
+  "branch": "codex/task-YC-006-2",
+  "owner": "agy-gemini-author",
+  "harness": "agy",
+  "allowed_paths": [
+    "scripts/agentctl.py",
+    "scripts/test_agentctl.py",
+    "docs/subsystems/coordination.md",
+    "docs/agentctl.md",
+    "docs/agentctl-recovery.md"
+  ],
+  "execution_run": "f19fdc171c9b9de12d618fc0",
+  "review": {
+    "reviewer": "agy-claude-reviewer",
+    "head": "fe2ea420ff0328ee8f3aaf88876f4497a5fa9753",
+    "verdict": "PASS",
+    "evidence": {
+      "sha256": "22f45f6d615191d3c6de4fce43383f8cbada75e39452fed93068ce1216b5305c",
+      "text": "```json\n{\n  \"head\": \"fe2ea420ff0328ee8f3aaf88876f4497a5fa9753\",\n  \"verdict\": \"PASS\",\n  \"findings\": [],\n  \"checks\": [\n    \"Ran `python3 scripts/test_agentctl.py`: 15 tests, all OK, exit 0. This includes the new `test_review_verdicts_blocked_state_and_stopped_recovery` and `test_blocked_agy_task_rejects_execute_until_recovered`.\",\n    \"`Ledger.review` in scripts/agentctl.py maps PASS to approved, ISSUES to running and BLOCKED to blocked. It also rejects any other verdict with 'Invalid review verdict'. The CLI `--verdict` choices are unchanged.\",\n    \"`Ledger.renew` requires state `running`, so a blocked task is rejected. `Ledger.submit` only allows `running`, `review` and `approved`, so it also rejects blocked.\",\n    \"`execute()` in scripts/agy_runner.py, role 'execute', requires 'running' with harness 'agy' under `ledger.leased`. A blocked task therefore fails with 'Execution requires a running agy claim'. The agy test covers this, and also covers the stale token being rejected after recovery.\",\n    \"`Ledger.recover` now accepts `blocked`. It still requires `--stopped` and a non-empty reason, and still rejects a task holding an integration reservation. It clears token, expires, head, submission, review and execution_run and sets state to ready. The next `claim` increments the attempt, creates a new worktree and token, and keeps the old worktree.\",\n    \"Review evidence stays in the events history. The test checks the 'reviewed' event sequence ISSUES, BLOCKED, PASS with the BLOCKED head and evidence text intact, even after the evidence file is mutated.\",\n    \"A blocked task is not in `queue()`, and `reserve`, `handoff` and `claim` all reject it.\",\n    \"ISSUES returns the task to running, and the old token can renew it. PASS reaches approved and an eligible queue entry.\",\n    \"The docs (coordination.md, agentctl.md, agentctl-recovery.md) match the implemented blocked-state contract.\",\n    \"Limitation: did not run Git commands or the full gate, as instructed; relied on the coordinator's gate and scope verification.\"\n  ]\n}\n```\n"
+    },
+    "run": {
+      "id": "1826752f9546b29f054ee0dc",
+      "requested_model": "claude-sonnet-5-5-medium",
+      "conversation_id": "78e78880-e6b0-4ba4-8395-3882f3dc7da4"
+    }
+  }
+}

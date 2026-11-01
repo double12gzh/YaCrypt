@@ -1,0 +1,23 @@
+### Changed Files
+
+- [agentctl.py](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/scripts/agentctl.py)
+  - Updated [`Ledger.review`](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/scripts/agentctl.py#L230-L252) to validate `verdict in ('PASS', 'ISSUES', 'BLOCKED')` and persist `BLOCKED` as task state `'blocked'` while keeping `PASS -> 'approved'` and `ISSUES -> 'running'` unchanged. Because `renew`, `submit`, and `agy_runner.execute` (`role == 'execute'`) require `'running'` (or `('running', 'review', 'approved')` for `submit`), tasks in `'blocked'` reject all three until explicit recovery.
+  - Updated [`Ledger.recover`](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/scripts/agentctl.py#L181-L196) to accept `'blocked'` in addition to `('provisioning', 'running', 'review', 'approved')`, requiring `--stopped` and a non-empty reason, returning the task to `'ready'` so the next `claim` creates a new attempt/worktree/token while preserving prior `reviewed` evidence snapshots in the `events` table.
+- [test_agentctl.py](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/scripts/test_agentctl.py)
+  - Added [`LedgerTests.test_review_verdicts_blocked_state_and_stopped_recovery`](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/scripts/test_agentctl.py#L209-L289) covering `ISSUES -> running` (renew/resubmit allowed), `BLOCKED -> blocked`, rejected `renew`/`submit`/`handoff`/`reserve`/`claim`, rejected `recover` without `--stopped` or reason, explicit `recover --stopped`, new attempt/worktree/token on next `claim`, fenced old token, `PASS -> approved`, and preserved review evidence snapshots in `events`.
+  - Added [`LedgerTests.test_blocked_agy_task_rejects_execute_until_recovered`](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/scripts/test_agentctl.py#L291-L344) verifying that a `blocked` `agy` task rejects [`execute`](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/scripts/agy_runner.py#L82-L108) (`role == 'execute'`), `renew`, and `submit` until `recover --stopped` and a new `claim`.
+- [coordination.md](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/docs/subsystems/coordination.md)
+  - Updated the state and review contract to document `BLOCKED -> blocked`, rejected `renew`/`submit`/`run --role execute`, explicit `recover --stopped` recovery to a new attempt, and preserved review evidence in event history.
+- [agentctl.md](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/docs/agentctl.md)
+  - Updated review and recovery user instructions to describe `PASS`/`ISSUES`/`BLOCKED` state transitions and `recover --stopped` for `blocked` tasks.
+- [agentctl-recovery.md](file:///Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/YC-006-2/docs/agentctl-recovery.md)
+  - Added `blocked` state handling to the recovery decision table and noted that `BLOCKED` review evidence remains preserved in event history after recovery.
+
+### Checks Run
+
+- `python3 scripts/test_agentctl.py`: **PASS** (`Ran 15 tests in 3.567s — OK`).
+- `python3 scripts/test_agy_runner.py`: **8/9 passed**; `test_timeout_stops_process_group` errored in the headless sandbox because invoking `/bin/ps` is blocked by sandbox permissions (`PermissionError: [Errno 1] Operation not permitted: 'ps'`).
+
+### Limitations
+
+- Full repository gate (`bash scripts/verify.sh`) and Git operations on the checkout were not run per coordinator sandbox rules; the coordinator runs the full gate before committing.

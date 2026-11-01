@@ -24,3 +24,10 @@ finish 仅核对目标 ref 时也会接受脏工作区。路径保留原始分�
 分支、SHA 和干净状态；不要用 `.git` 字符串前缀误禁 .github 等合法治理路径。
 三个问题均已加入 scripts/test_agentctl.py 的回归。Seen：2026-11-01（一次）。
 证据：[YC-002 独立验收](docs/tasks/YC-002-acceptance.md)。
+
+## YC-005：真实进程与 CLI 路径也必须进入验收
+
+仅导入模块的测试漏掉了 CLI 作为 __main__ 加载的 Error 类身份差异；独立 Claude 审查后增加真实 CLI 回归。
+执行快照必须在提交前后稳定，包括删除和重命名。正常退出也需停止本次进程组，之后才保存快照。
+不能用服务 SUCCESS、手工工具标签或格式不合规的 PASS 代替有效产物；原始回执与提交 SHA 必须可追溯。
+证据：[真实 agy 复盘](docs/tasks/YC-005-retrospective.md)。Seen：2026-11-01（一次）。

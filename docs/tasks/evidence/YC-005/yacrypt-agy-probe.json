@@ -1,0 +1,1 @@
+{"conversation_id":"6cb54a86-a217-4bb0-b76d-411fd2516467","status":"SUCCESS","response":"AGY_PROBE_OK\n","duration_seconds":5.722402,"num_turns":1,"usage":{"input_tokens":19222,"output_tokens":63,"thinking_tokens":53,"cache_read_tokens":0,"total_tokens":19285}}

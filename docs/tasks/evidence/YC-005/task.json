@@ -1,0 +1,20 @@
+{
+  "id": "YC-006",
+  "source": "Real workflow bug: BLOCKED reviews are currently stored as running, obscuring a blocked task",
+  "goal": "Persist review verdict BLOCKED as task state blocked. Reject renew/submit/execute for blocked tasks until explicit recover --stopped. Recover must accept blocked and create a new attempt on next claim. Preserve review evidence in history. Keep ISSUES -> running and PASS -> approved unchanged.",
+  "non_goals": "Do not change cryptography, dependencies, runtime runner, gates, permissions or Git history. Do not commit. Do not invoke agentctl against the real database.",
+  "acceptance": [
+    "Add meaningful real Git/SQLite regression tests for BLOCKED state, rejected renew/submit, explicit stopped recovery, new attempt/token, and unchanged ISSUES/PASS behavior.",
+    "Run python3 scripts/test_agentctl.py and report results; coordinator runs full gate.",
+    "Update owning coordination contract and relevant user instructions to reflect blocked state."
+  ],
+  "allowed_paths": [
+    "scripts/agentctl.py",
+    "scripts/test_agentctl.py",
+    "docs/subsystems/coordination.md",
+    "docs/agentctl.md",
+    "docs/agentctl-recovery.md"
+  ],
+  "depends_on": [],
+  "max_attempts": 3
+}
