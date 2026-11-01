@@ -1,0 +1,37 @@
+warning: `/Users/jeffreyguan/.cargo/config` is deprecated in favor of `config.toml`
+  |
+  = help: if you need to support cargo 1.38 or earlier, you can symlink `config` to `config.toml`
+   Compiling yacrypt v0.0.1 (/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/viewport-repro)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.37s
+     Running tests/tui_viewport.rs (target/debug/deps/tui_viewport-81574d3ee574580d)
+
+running 1 test
+test archived_80x12_selected_idx_4_remains_visible ... FAILED
+
+failures:
+
+---- archived_80x12_selected_idx_4_remains_visible stdout ----
+
+thread 'archived_80x12_selected_idx_4_remains_visible' (221560993) panicked at tests/tui_viewport.rs:132:5:
+selected filename preview "item_04.txt" missing from 80x12 frame:
+┌ File Encryption (Hybrid X25519+Ed25519 or Symmetric Argon2id) ───────────────┐
+│↑/↓: Navigate | Enter: Edit/Toggle | Ctrl+O or 'f': File Browser | Tab        │
+│(editing)┌ 🗂️  Select File to Encrypt (12 items) ───────────────────┐         │
+│         │  📂 Directory: /fixtures                                 │         │
+│▶ 1. Inpu│  [↑/↓] Move  [Enter] Open/Select  [Backspace/←] Parent   │to browse│
+│files>   │[.] Hidden: OFF  [Esc] Cancel                             │         │
+│  2. Outp│                                                          │         │
+│  3. Encr│    📄 item_00.txt  (42 B)                                │ypair>   │
+│  4. Embe│    📄 item_01.txt  (42 B)                                │         │
+│  5. Over└──────────────────────────────────────────────────────────┘         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    archived_80x12_selected_idx_4_remains_visible
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 9 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test tui_viewport`

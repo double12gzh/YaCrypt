@@ -296,7 +296,7 @@ class Evolution:
         if passed:
             lessons=root/'LESSONS.md'
             prior=lessons.read_text(encoding='utf-8') if lessons.exists() else '# 开发教训\n'
-            prior+='\n## '+name+'：自动探针的已验证记录\n\n'
+            prior+='\n## '+name+'：任务的已验证记录\n\n'
             if state['source']['kind']=='approved_backlog':
                 prior+='经显式批准的任务 '+state['source']['proposal']+' 在 '+state['head']+' 完成回归与独立验收；源诊断状态见复盘，不推断原完整门禁失败。\n'
             else:

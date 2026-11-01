@@ -1,0 +1,20 @@
+{
+  "id": "DG-a28c90bf5f1ee7fa",
+  "head": "940b2ea36815a659beea1aea6c7afb90a169c208",
+  "worktree": "/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/quality-intake",
+  "source_digest": "937803cc63388319b33aecd451ebeb34c0b51bfe5552db7efeeb0bfceeec2175",
+  "command": [
+    "bash",
+    "scripts/verify.sh"
+  ],
+  "status": "passed",
+  "category": "none",
+  "failed_stage": null,
+  "exit_code": 0,
+  "error": null,
+  "log": "/Users/jeffreyguan/Desktop/YaCrypt/.git/agentctl/evolution/quality/DG-a28c90bf5f1ee7fa.log",
+  "log_sha256": "3f63d75e2e0e8e4b4f78f56fa5d8f63eb9280c30a43e6ab034baaf0ff153330a",
+  "started": 1793529416.7803671,
+  "finished": 1793529461.0305889,
+  "fingerprint": "e3e45a5c89a7f77c540ced8e5220a44d8d8950068657272652b068bd37c49912"
+}

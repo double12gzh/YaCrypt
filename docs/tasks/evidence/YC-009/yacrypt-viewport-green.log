@@ -1,0 +1,12 @@
+warning: `/Users/jeffreyguan/.cargo/config` is deprecated in favor of `config.toml`
+  |
+  = help: if you need to support cargo 1.38 or earlier, you can symlink `config` to `config.toml`
+   Compiling yacrypt v0.0.1 (/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/viewport-repro)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.47s
+     Running tests/viewport_repro.rs (target/debug/deps/viewport_repro-5661d269630c7322)
+
+running 1 test
+test selected_file_visible_in_short_terminal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.01s
+

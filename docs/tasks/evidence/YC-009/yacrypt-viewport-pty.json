@@ -1,0 +1,19 @@
+{
+  "head": "ce73ae9efb7f17d6dc278e92d836743f688a87d8",
+  "terminal": [
+    80,
+    12
+  ],
+  "actions": [
+    "2: Encrypt",
+    "f: File browser",
+    "Down x5: select item_04.txt",
+    "Resize 81x12 then 80x12; inspect full redraw",
+    "Esc",
+    "q"
+  ],
+  "selected_name_observed": true,
+  "exit_code": 0,
+  "raw_sha256": "5abce8905bfde2e79e8f44aedf1ffa32615b820ccefc54f7994774e7a018575f",
+  "limits": "Confirms live terminal navigation/render output and normal exit; not a complete emulator screenshot or all platforms."
+}

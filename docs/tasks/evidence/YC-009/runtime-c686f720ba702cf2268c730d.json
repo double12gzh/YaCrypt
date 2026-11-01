@@ -1,0 +1,44 @@
+{
+  "id": "c686f720ba702cf2268c730d",
+  "task": "EV-265392763f90",
+  "role": "review",
+  "actor": "evolution-reviewer",
+  "attempt": 1,
+  "harness": "omp",
+  "requested_model": "magpie/amd/DeepSeek-V4.1-Flash",
+  "model_display": "DeepSeek-V4.1-Flash-1017 · AMD TokenFactory",
+  "model_evidence": "explicit CLI --model, accepted runtime result; backend model not attested",
+  "state": "failed",
+  "started": 1793530816.504537,
+  "base_head": "ce73ae9efb7f17d6dc278e92d836743f688a87d8",
+  "timeout_seconds": 900,
+  "exit_code": 1,
+  "error": "ValueError: Model turn failed, aborted or was truncated",
+  "finished": 1793531172.5762508,
+  "stdout.json_sha256": "d557bfaf8dbd5e6773ba2fbf33f07186358de44d968c54324f0253274a6226a4",
+  "stderr.log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "prompt.txt_sha256": "0371e7f26f7ea3480f555ab644c5037a65e06d80b658ddf14d683f3b6d12ea72",
+  "observed_model_errors": [
+    {
+      "stopReason": "error",
+      "errorMessage": "AMD TokenFactory: connection lost mid-reply (unexpected EOF)",
+      "provider": "magpie",
+      "model": "amd/DeepSeek-V4.1-Flash"
+    }
+  ],
+  "observed_session_ids": [
+    "01a196c4-6845-7158-871b-5123ff28abf6"
+  ],
+  "tool_names": [
+    "read",
+    "read",
+    "read",
+    "read",
+    "read",
+    "read",
+    "read",
+    "read",
+    "read",
+    "read"
+  ]
+}

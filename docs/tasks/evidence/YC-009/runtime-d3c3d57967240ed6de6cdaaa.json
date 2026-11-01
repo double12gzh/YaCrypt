@@ -1,0 +1,33 @@
+{
+  "id": "d3c3d57967240ed6de6cdaaa",
+  "task": "EV-265392763f90",
+  "role": "review",
+  "actor": "evolution-reviewer",
+  "attempt": 1,
+  "harness": "omp",
+  "requested_model": "magpie/amd/DeepSeek-V4.1-Flash",
+  "model_display": "DeepSeek-V4.1-Flash-1017 · AMD TokenFactory",
+  "model_evidence": "explicit CLI --model, accepted runtime result; backend model not attested",
+  "state": "failed",
+  "started": 1793531335.815083,
+  "base_head": "ce73ae9efb7f17d6dc278e92d836743f688a87d8",
+  "timeout_seconds": 600,
+  "exit_code": 1,
+  "error": "ValueError: Model turn failed, aborted or was truncated",
+  "finished": 1793531387.5001678,
+  "stdout.json_sha256": "8af7f9628dc82004e22e14705cfb984dd42c79ed3a3bd96610cc1c832c3086c6",
+  "stderr.log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "prompt.txt_sha256": "ab09f7675288cef8453c27e936bcfbaa28b0cca9b9850578787284fcd2f8ed0f",
+  "observed_model_errors": [
+    {
+      "stopReason": "error",
+      "errorMessage": "Upstream stream terminated unexpectedly before completion",
+      "provider": "magpie",
+      "model": "amd/DeepSeek-V4.1-Flash"
+    }
+  ],
+  "observed_session_ids": [
+    "01a196cc-54d2-7778-b084-66cfa64ab89b"
+  ],
+  "tool_names": []
+}

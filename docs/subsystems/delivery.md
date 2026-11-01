@@ -23,4 +23,5 @@ Python 回归检查先运行，Cargo 格式、lint、测试、构建和依赖审
 macOS 本地完整验证可记录，但 CI 中 macOS 全套行为测试仍是后续任务。
 tag 的 publish-crate 与 create-release 都依赖 check/build，彼此独立；
 GitHub Release 存在不代表 crates.io 发布成功。远端保护规则未在本地验证。
-第一阶段产出可审查分支及证据，合并、推送和发布需要对应授权；没有后台调度器。第二阶段的 [任务台账](coordination.md) 只记录手动协作和集成。
+候选分支集成、main 合并、推送和发布分开记录，后续交付需要对应授权；没有后台调度器。
+当前 [协作闭环](coordination.md) 支持真实多运行器、质量证据提案、显式批准任务及候选反馈；自动循环不获得 main/push/release 权限。
