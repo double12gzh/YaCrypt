@@ -168,7 +168,8 @@ def execute(ledger, name, role, model, actor, token, seconds, instructions=None)
             prompt += (f'Read-only independent review of commit {head}, diff against {task["base"]}. '
                        'Inspect actual code and tests, not author summaries. Do not write project files. '
                        'Return only a JSON object with head (this exact SHA), verdict (PASS/ISSUES/BLOCKED), '
-                       'findings (array), and checks (array). Missing evidence must not become PASS.\n')
+                       'findings (actionable defects only), and checks (nonempty array). PASS requires findings: []; '
+                       'put successful observations and limitations in checks. Missing evidence must not become PASS.\n')
         prompt += ('The coordinator already verified the checkout branch and HEAD locally: '
                    + task['branch'] + ' at ' + head + '. Shared Git metadata is intentionally not exposed in this sandbox. '
                    'Do not run Git commands against this checkout. Read/edit source files directly; targeted tests may create their own temporary Git fixtures.\n')

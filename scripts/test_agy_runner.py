@@ -5,6 +5,7 @@ from pathlib import Path
 import signal
 import sys
 import unittest
+from unittest.mock import patch
 
 import test_agentctl as fixtures
 from agentctl import Error, git
@@ -56,7 +57,7 @@ if mode == 'accept-edits':
     response = 'Implementation complete; fixture only'
 else:
     if kind == 'mutate': Path('docs/result.md').write_text('changed during review')
-    response = json.dumps(dict(head=head, verdict='PASS', findings=[], checks=['fixture']))
+    response = json.dumps(dict(head=head, verdict='PASS', findings=[], checks=[] if kind == 'empty_checks' else ['fixture']))
 print(json.dumps(dict(status='SUCCESS', conversation_id='fake-conversation', response=response,
                      usage=dict(input_tokens=1, output_tokens=1))))
 ''')
@@ -131,6 +132,7 @@ print(json.dumps(dict(status='SUCCESS', conversation_id='fake-conversation', res
         record = self.run_author(1)
         self.assertEqual(record['state'], 'timed_out')
         self.assertNotIn('active_run', self.ledger.task('one'))
+        self.assertTrue(pidfile.exists(), 'Timeout must exercise a child that actually started')
         # Verify the child cannot perform its delayed write; no ps permission needed.
         import time
         time.sleep(1.3)
@@ -193,6 +195,74 @@ print(json.dumps(dict(status='SUCCESS', conversation_id='fake-conversation', res
         record = self.run_author()
         self.assertEqual(record['state'], 'failed')
         self.assertIn('denied actions', record['error'])
+
+    def test_each_supported_signal_interrupts_and_restores_handlers(self):
+        import threading, time
+        os.environ['FAKE_AGY'] = 'hang'
+        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT):
+            with self.subTest(signal=signum):
+                ready = Path(self.tmp.name) / ('ready-' + str(signum))
+                os.environ['CHILD_PID'] = str(ready)
+                before = {s: signal.getsignal(s) for s in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT)}
+                def interrupt():
+                    deadline = time.monotonic() + 5
+                    while not ready.exists() and time.monotonic() < deadline:
+                        time.sleep(.01)
+                    if ready.exists(): os.kill(os.getpid(), signum)
+                sender = threading.Thread(target=interrupt); sender.start()
+                try:
+                    with self.assertRaisesRegex(Error, 'interrupted'):
+                        self.run_author(10)
+                finally:
+                    sender.join(timeout=6)
+                self.assertTrue(ready.exists())
+                self.assertFalse(sender.is_alive())
+                self.assertEqual(self.ledger.task('one')['runs'][-1]['state'], 'interrupted')
+                self.assertNotIn('active_run', self.ledger.task('one'))
+                self.assertEqual(before, {s: signal.getsignal(s) for s in before})
+
+    def test_catalog_timeout_has_no_task_reservation(self):
+        import subprocess
+        with patch('agy_runner.wait_unreaped', side_effect=subprocess.TimeoutExpired('models', 45)):
+            with self.assertRaisesRegex(ValueError, 'models timed out'):
+                self.run_author()
+        self.assertNotIn('active_run', self.ledger.task('one'))
+
+    def test_instruction_and_combined_prompt_limits_fail_closed(self):
+        instructions = Path(self.tmp.name) / 'large.txt'
+        instructions.write_text('x' * (80 * 1024 + 1))
+        with self.assertRaisesRegex(Error, 'Instructions too large'):
+            execute(self.ledger, 'one', 'execute', 'gemini-test-high', 'author',
+                    self.task['token'], 10, instructions)
+        self.assertNotIn('active_run', self.ledger.task('one'))
+        with self.ledger.transaction():
+            task = self.ledger.task('one'); task['goal'] = 'x' * (97 * 1024)
+            self.ledger.save(task, 'fixture_large_goal')
+        record = self.run_author()
+        self.assertEqual(record['state'], 'failed')
+        self.assertIn('Combined prompt too large', record['error'])
+        self.assertNotIn('active_run', self.ledger.task('one'))
+
+    def test_empty_review_checks_are_rejected(self):
+        self.submit_author(); os.environ['FAKE_AGY'] = 'empty_checks'
+        record = execute(self.ledger, 'one', 'review', 'claude-test-medium', 'reviewer', None, 10)
+        self.assertEqual(record['state'], 'failed')
+
+    def test_stale_completion_preserves_recovery_and_signal_handlers(self):
+        import agy_runner
+        original = agy_runner.wait_unreaped
+        before = signal.getsignal(signal.SIGTERM)
+        def recover_after_exit(proc, seconds):
+            original(proc, seconds)
+            if proc.args[1] != 'models':
+                self.ledger.recover('one', True, 'fixture confirmed leader exited')
+        with patch('agy_runner.wait_unreaped', side_effect=recover_after_exit):
+            with self.assertRaisesRegex(Error, 'Stale run completion'):
+                self.run_author()
+        self.assertEqual(self.ledger.task('one')['state'], 'ready')
+        self.assertNotIn('active_run', self.ledger.task('one'))
+        self.assertEqual(signal.getsignal(signal.SIGTERM), before)
+        self.assertTrue(list((self.ledger.directory / 'runs').glob('*/receipt.json')))
 
     def test_active_run_blocks_submit_and_requires_stopped_recovery(self):
         with self.ledger.transaction():

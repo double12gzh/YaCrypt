@@ -46,7 +46,7 @@ Codex / pi / omp 仍使用手动 handoff，本轮未实现它们的自动进程�
 run 在数据库中先保留 active_run，再启动独立进程组；有效执行租约必须覆盖超时及清理余量。
 active_run 阻止重复运行和手动 submit/review。异常退出时保留失败回执；监督进程被强杀时可能
 留下 starting/running，操作者必须先停止旧进程组，再 recover --stopped，新结果由尝试和 run ID 隔离。
-正常退出、超时、SIGINT/SIGTERM 都会终止所创建的进程组；waitid/WNOWAIT 保留 leader PID 到清理完成，随后才验证产物；不承诺控制自行脱离该组的进程。
+正常退出、超时、SIGINT/SIGTERM/SIGHUP/SIGQUIT 都会终止所创建的进程组；waitid/WNOWAIT 保留 leader PID 到清理完成，随后才验证产物；不承诺控制自行脱离该组的进程。
 日志位于 common Git dir/agentctl/runs，保留原始结果但不自动加入 Git。
 
 执行模型使用 accept-edits + sandbox，验收模型使用 plan + sandbox。这些是 agy 策略，
@@ -62,3 +62,10 @@ agy JSON 当前不返回可证明的后端模型身份，所以 requested_model 
 统一门禁调用该测试；任务演练见 [YC-002](../tasks/YC-002.md)。
 
 [运行器测试](../../scripts/test_agy_runner.py) 使用本地假 agy 子进程验证参数、失败、交叉模型、超时和进程组清理；真实模型演练单独记录，测试不访问模型服务。
+
+任务 diff 和额外指令各限 80 KiB，组合提示词限 96 KiB，超限失败关闭并要求拆分。
+
+支持范围：任务路径采用 UTF-8；非 UTF-8 文件名会失败关闭，不在本版跨平台支持范围。
+信号处理不是与 SQLite 原子提交绑定的事务：保留 active_run 后、安装处理器前，以及切换清理信号
+处理器的极短窗口内被中断，仍可能留下 starting/running；这与硬崩溃一样必须确认进程停止后 recover。
+清理期间忽略重复中断是正常已安装处理器路径的行为，不承诺消除这些窗口。
