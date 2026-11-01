@@ -404,4 +404,6 @@ def main():
 
 
 if __name__ == '__main__':
+    # Keep Error/Ledger identity shared with the lazily imported runtime.
+    sys.modules['agentctl'] = sys.modules[__name__]
     sys.exit(main())

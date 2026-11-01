@@ -1,7 +1,7 @@
 # 用 agy 实际执行与跨模型验收
 
 先确认项目内容允许交给所使用的模型服务。运行器不会读取认证文件；agy 使用本机已有登录状态。
-本版支持 POSIX 进程组，需要可执行的 `agy`。`agy models` 返回当前账号模型目录，目录可见不等于调用一定成功。
+本版需要 POSIX 进程组及 waitid/WNOWAIT，需要可执行的 `agy`。`agy models` 返回当前账号模型目录，目录可见不等于调用一定成功。
 
 ## 执行
 
@@ -34,7 +34,7 @@ python3 scripts/agentctl.py run YC-EXAMPLE --role review --model claude-sonnet-5
 ## 观察与停止
 
 run 前台运行，另一个终端可用 `show <id>` 查看 active_run、pid、请求模型及持久回执。
-超时和 Ctrl-C/SIGTERM 会清理本次进程组，保留 stdout/stderr/prompt/receipt。
+正常退出、超时和 Ctrl-C/SIGTERM 都会在保存快照前清理本次进程组；清理期间忽略重复中断，保留 stdout/stderr/prompt/receipt。
 监督进程被 SIGKILL 或机器中断后，先查现场、停止实际进程组，再 recover --stopped；不根据过期 PID 盲目杀进程。
 失败后的部分文件保留，不自动还原。先复查 diff，再恢复新尝试或确认修正后重新运行。
 

@@ -15,6 +15,7 @@ class RunnerTests(unittest.TestCase):
     setUpFixture = fixtures.LedgerTests.setUp
     add = fixtures.LedgerTests.add
     commit = fixtures.LedgerTests.commit
+    cli = fixtures.LedgerTests.cli
 
     def setUp(self):
         self.setUpFixture()
@@ -43,6 +44,10 @@ if kind == 'bad':
 mode = args[args.index('--mode') + 1]
 head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
 if mode == 'accept-edits':
+    if kind == 'delete': Path('docs/start.md').unlink()
+    if kind == 'rename': Path('docs/start.md').rename('docs/renamed.md')
+    if kind == 'background':
+        subprocess.Popen([sys.executable, '-c', "import time; from pathlib import Path; time.sleep(1); Path('docs/late.md').write_text('late')"])
     Path('docs/result.md').write_text('implemented by fake fixture\n')
     response = 'Implementation complete; fixture only'
 else:
@@ -133,6 +138,45 @@ print(json.dumps(dict(status='SUCCESS', conversation_id='fake-conversation', res
         self.assertEqual(record['state'], 'failed')
         self.assertIn('dirty', record['error'])
         self.assertTrue(git(self.task['worktree'], 'status', '--porcelain'))
+
+    def test_cli_review_mutation_is_failed_not_successful(self):
+        self.submit_author(); os.environ['FAKE_AGY'] = 'mutate'
+        result = self.cli('run', 'one', '--role', 'review', '--model', 'claude-test-medium',
+                          '--actor', 'reviewer', '--seconds', '10')
+        self.assertEqual(result.returncode, 1, result.stderr)
+        record = json.loads(result.stdout)
+        self.assertEqual(record['state'], 'failed')
+        self.assertIn('dirty', record['error'])
+        self.assertNotIn('Traceback', result.stderr)
+        self.assertEqual(self.ledger.task('one')['runs'][-1]['state'], 'failed')
+
+    def test_cli_validation_uses_shared_error_class(self):
+        self.submit_author()
+        result = self.cli('run', 'one', '--role', 'review', '--model', 'gemini-test-low',
+                          '--actor', 'reviewer', '--seconds', '10')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('different model', json.loads(result.stderr)['error'])
+
+    def test_deleted_file_snapshot_survives_commit(self):
+        os.environ['FAKE_AGY'] = 'delete'
+        self.assertEqual(self.run_author()['state'], 'succeeded')
+        wt = self.task['worktree']
+        git(wt, 'add', '-A'); git(wt, 'commit', '-m', 'delete fixture')
+        self.ledger.submit('one', self.task['token'], git(wt, 'rev-parse', 'HEAD'), self.report)
+
+    def test_renamed_file_snapshot_survives_commit(self):
+        os.environ['FAKE_AGY'] = 'rename'
+        self.assertEqual(self.run_author()['state'], 'succeeded')
+        wt = self.task['worktree']
+        git(wt, 'add', '-A'); git(wt, 'commit', '-m', 'rename fixture')
+        self.ledger.submit('one', self.task['token'], git(wt, 'rev-parse', 'HEAD'), self.report)
+
+    def test_normal_exit_stops_background_child_before_snapshot(self):
+        import time
+        os.environ['FAKE_AGY'] = 'background'
+        self.assertEqual(self.run_author()['state'], 'succeeded')
+        time.sleep(1.2)
+        self.assertFalse((Path(self.task['worktree']) / 'docs/late.md').exists())
 
     def test_active_run_blocks_submit_and_requires_stopped_recovery(self):
         with self.ledger.transaction():

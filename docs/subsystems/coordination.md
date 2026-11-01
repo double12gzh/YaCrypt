@@ -46,7 +46,7 @@ Codex / pi / omp 仍使用手动 handoff，本轮未实现它们的自动进程�
 run 在数据库中先保留 active_run，再启动独立进程组；有效执行租约必须覆盖超时及清理余量。
 active_run 阻止重复运行和手动 submit/review。异常退出时保留失败回执；监督进程被强杀时可能
 留下 starting/running，操作者必须先停止旧进程组，再 recover --stopped，新结果由尝试和 run ID 隔离。
-超时、SIGINT/SIGTERM 会终止所创建的进程组；不承诺控制自行脱离该组的进程。
+正常退出、超时、SIGINT/SIGTERM 都会终止所创建的进程组；waitid/WNOWAIT 保留 leader PID 到清理完成，随后才验证产物；不承诺控制自行脱离该组的进程。
 日志位于 common Git dir/agentctl/runs，保留原始结果但不自动加入 Git。
 
 执行模型使用 accept-edits + sandbox，验收模型使用 plan + sandbox。这些是 agy 策略，

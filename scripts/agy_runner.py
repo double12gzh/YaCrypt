@@ -22,6 +22,8 @@ def worktree_digest(worktree):
     names = git(worktree, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0')
     for name in sorted(set(filter(None, names))):
         path = Path(worktree) / name
+        if not path.exists() and not path.is_symlink():
+            continue  # Deleted index entries disappear at commit; hash the resulting tree.
         digest.update(name.encode() + b'\0')
         if path.is_symlink():
             digest.update(b'link:' + os.readlink(path).encode())
@@ -79,10 +81,23 @@ def stop_group(proc):
     proc.wait()
 
 
+def wait_unreaped(proc, seconds):
+    # Keep the leader PID reserved until the entire group has been stopped.
+    deadline = time.monotonic() + seconds
+    while True:
+        result = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        if result is not None:
+            return
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired(proc.args, seconds)
+        time.sleep(0.05)
+
+
 def execute(ledger, name, role, model, actor, token, seconds, instructions=None):
     from agentctl import Error, git, require
     require(role in ('execute', 'review'), 'Invalid role')
-    require(os.name == 'posix', 'agy supervisor currently requires POSIX process groups')
+    require(os.name == 'posix' and hasattr(os, 'waitid') and hasattr(os, 'WNOWAIT'),
+            'agy supervisor requires POSIX process groups and waitid/WNOWAIT')
     require(1 <= seconds <= 1800, 'Timeout must be 1..1800 seconds')
     require(actor.strip(), 'Actor required')
     executable = shutil.which('agy')
@@ -172,7 +187,9 @@ def execute(ledger, name, role, model, actor, token, seconds, instructions=None)
                 current['runs'][-1] = dict(record)
                 ledger.save(current, 'run_started', record)
             try:
-                record['exit_code'] = proc.wait(timeout=seconds)
+                wait_unreaped(proc, seconds)
+                stop_group(proc)
+                record['exit_code'] = proc.returncode
             except subprocess.TimeoutExpired:
                 record['state'] = 'timed_out'
                 stop_group(proc)
@@ -187,7 +204,7 @@ def execute(ledger, name, role, model, actor, token, seconds, instructions=None)
                 require(payload.get('model', model) == model, 'Runtime reported a different model')
                 require(isinstance(payload.get('response'), str) and payload['response'].strip(), 'Missing response')
                 require(isinstance(payload.get('conversation_id'), str) and payload['conversation_id'], 'Missing runtime conversation ID')
-                record.update(conversation_id=payload['conversation_id'], usage=payload.get('usage'), state='succeeded')
+                record.update(conversation_id=payload['conversation_id'], usage=payload.get('usage'))
                 response = payload['response']
                 if role == 'review':
                     text = response.strip()
@@ -207,12 +224,16 @@ def execute(ledger, name, role, model, actor, token, seconds, instructions=None)
                             and git(task['worktree'], 'symbolic-ref', '--short', 'HEAD') == task['branch'],
                             'Execution changed branch or committed unexpectedly')
                     record['worktree_digest'] = worktree_digest(task['worktree'])
+                record['state'] = 'succeeded'
     except KeyboardInterrupt:
         interrupted = True
         record.update(state='interrupted', error='Supervisor interrupted')
     except (Error, OSError, ValueError, subprocess.SubprocessError) as exc:
         record.update(state='failed', error=str(exc))
     finally:
+        # Finish cleanup atomically with respect to repeated interactive termination.
+        old_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         cleanup_ok = True
         if proc is not None:
             try:
@@ -220,8 +241,6 @@ def execute(ledger, name, role, model, actor, token, seconds, instructions=None)
             except OSError as exc:
                 cleanup_ok = False
                 record.update(state='failed', error='Process cleanup failed: ' + str(exc))
-        if previous is not None:
-            signal.signal(signal.SIGTERM, previous)
         record['finished'] = time.time()
         for filename in ('stdout.json', 'stderr.log', 'prompt.txt', 'response.txt'):
             path = directory / filename
@@ -238,6 +257,9 @@ def execute(ledger, name, role, model, actor, token, seconds, instructions=None)
                 current.pop('active_run', None)
             current['runs'][-1] = record
             ledger.save(current, 'run_finished', record)
+        signal.signal(signal.SIGINT, old_int)
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
     if interrupted:
         raise Error('Run interrupted; receipt retained at ' + str(directory))
     return record
