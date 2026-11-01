@@ -572,9 +572,31 @@ fn render_modal(frame: &mut Frame, app: &TuiApp) {
                 }
             };
 
-            let mut lines = vec![
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::Cyan))
+                .title(format!(" 🗂️  {} ({} items) ", title_label, entries.len()));
+            let inner_area = block.inner(fb_area);
+            frame.render_widget(block, fb_area);
+            if inner_area.width == 0 || inner_area.height == 0 {
+                return;
+            }
+
+            // Clip headers instead of wrapping them, and give up header rows before
+            // the last entry row. The list's capacity is its actual inner viewport.
+            let header_height = inner_area.height.saturating_sub(1).min(3);
+            let header_area = Rect { height: header_height, ..inner_area };
+            let list_area = Rect {
+                y: inner_area.y + header_height,
+                height: inner_area.height - header_height,
+                ..inner_area
+            };
+            let header_lines = vec![
                 Line::from(Span::styled(
-                    format!("  📂 Directory: {}", current_dir.display()),
+                    format!(
+                        "  📂 Directory: {}",
+                        file_browser_single_line(&current_dir.to_string_lossy())
+                    ),
                     Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                 )),
                 Line::from(format!(
@@ -583,15 +605,16 @@ fn render_modal(frame: &mut Frame, app: &TuiApp) {
                 )),
                 Line::from(""),
             ];
+            frame.render_widget(Paragraph::new(header_lines), header_area);
 
-            let max_visible = fb_area.height.saturating_sub(6) as usize;
-            let visible_count = max_visible.max(5);
-            let start =
-                if *selected_idx >= visible_count { selected_idx + 1 - visible_count } else { 0 };
-            let end = (start + visible_count).min(entries.len());
+            let visible_count = usize::from(list_area.height);
+            let available_width = usize::from(list_area.width);
+            let start = selected_idx.saturating_add(1).saturating_sub(visible_count);
+            let end = start.saturating_add(visible_count).min(entries.len());
+            let mut items = Vec::new();
 
             if entries.is_empty() {
-                lines.push(Line::from("    (Empty directory)"));
+                items.push(ListItem::new("    (Empty directory)"));
             } else {
                 for (i, entry) in entries.iter().enumerate().take(end).skip(start) {
                     let is_sel = i == *selected_idx;
@@ -621,24 +644,34 @@ fn render_modal(frame: &mut Frame, app: &TuiApp) {
                     } else {
                         Style::default()
                     };
-                    lines.push(Line::from(Span::styled(
-                        format!("  {}{}{}{}", cursor, icon, entry.name, suffix),
+                    let name = file_browser_single_line(&entry.name);
+                    let full_prefix = format!("  {}{}", cursor, icon);
+                    let name_width = Line::from(name.as_str()).width();
+                    let prefix_width = Line::from(full_prefix.as_str()).width();
+                    // Prefer filename text to decoration on narrow viewports. With
+                    // fewer than four columns, even the cursor can hide a wide glyph.
+                    let prefix = if prefix_width.saturating_add(name_width) <= available_width {
+                        full_prefix
+                    } else if list_area.width >= 4 {
+                        cursor.to_string()
+                    } else {
+                        String::new()
+                    };
+                    items.push(ListItem::new(Line::from(Span::styled(
+                        format!("{}{}{}", prefix, name, suffix),
                         style,
-                    )));
+                    ))));
                 }
             }
 
-            let block = Paragraph::new(lines)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .style(Style::default().fg(Color::Cyan))
-                        .title(format!(" 🗂️  {} ({} items) ", title_label, entries.len())),
-                )
-                .wrap(Wrap { trim: false });
-            frame.render_widget(block, fb_area);
+            // Each item is exactly one Line; Ratatui clips it by terminal cell width.
+            frame.render_widget(List::new(items), list_area);
         }
     }
+}
+
+fn file_browser_single_line(text: &str) -> String {
+    text.chars().map(|ch| if ch.is_control() { ' ' } else { ch }).collect()
 }
 
 fn format_bytes(bytes: u64) -> String {
