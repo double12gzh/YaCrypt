@@ -44,3 +44,8 @@ finish 仅核对目标 ref 时也会接受脏工作区。路径保留原始分�
 ## YC-008：验证实际入口解释器，不能仅核对 Python 版本
 
 同机 Homebrew Python 提供 waitid/WNOWAIT，Apple Python 3.9.6 没有。完整门禁在前者通过并不能证明用户终端的后者可启动。CLI 在台账副作用前做能力检查，必要时选择已安装兼容解释器；子进程 PATH 用绝对目录以跨 worktree cwd 保持有效，不降级 PID 保留和进程组清理。加入真实 Apple Python 单轮 watch 和无候选失败检查。见 [任务](docs/tasks/YC-008.md)。
+
+## EV-265392763f90：自动探针的已验证记录
+
+经显式批准的任务 QP-f9cdaa40e2b1456a 在 ce73ae9efb7f17d6dc278e92d836743f688a87d8 完成回归与独立验收；源诊断状态见复盘，不推断原完整门禁失败。
+这是一条事实记录，尚未自动晋升为工程规范。证据见 [复盘](docs/tasks/EV-265392763f90-retrospective.md)。
