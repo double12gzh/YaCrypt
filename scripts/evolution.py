@@ -248,6 +248,9 @@ class Evolution:
             require(task['state'] in ('running','review','approved') and task.get('head'),'Need a submitted implementation; use reconcile for earlier failures')
             require(self.ledger.current_head(task)==task['head'],'Implementation changed; submit a verified new snapshot instead')
             policy=state['policy'];validate_policy(policy)
+            if recheck:
+                require(task.get('expires',0)>time.time()+policy['gate_seconds']+30,
+                        'Recheck requires the original lease to cover the full gate; use reconcile --stopped after inspecting the preserved submission')
             # Preserve the previous complete failure record before changing any state.
             data=(directory/'cycle.json').read_bytes()
             (directory/('prior-cycle-'+hashlib.sha256(data).hexdigest()+'.json')).write_bytes(data)

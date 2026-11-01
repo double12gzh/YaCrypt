@@ -1,0 +1,8 @@
+{
+  "state": "timed_out",
+  "timeout_seconds": 600,
+  "harness": "omp",
+  "requested_model": "magpie/amd/DeepSeek-V4.1-Flash",
+  "session_id": "01a195f5-c224-72bf-8fa5-45dc81f7207c",
+  "raw_sha256": "e28c3cbeae63849e287bde091fba8c6953b54ba7be5fd114bd60ba22cca0abb0"
+}

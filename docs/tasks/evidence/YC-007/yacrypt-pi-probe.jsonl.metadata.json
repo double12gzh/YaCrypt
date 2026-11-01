@@ -1,0 +1,14 @@
+{
+  "raw_sha256": "111ce1025552d42679fc176ca0ce8ea1e451ad2464e511fb0e89771ffd2b11f6",
+  "sessions": [
+    "01a195eb-62a5-77aa-a64d-f10a871bf82a"
+  ],
+  "models": [
+    {
+      "provider": "magpie",
+      "model": "group/gemini-3.8-flash",
+      "responseModel": "deepseek-v4.1-flash",
+      "stopReason": "stop"
+    }
+  ]
+}

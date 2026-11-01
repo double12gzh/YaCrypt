@@ -1,0 +1,14 @@
+{
+  "raw_sha256": "4fbbe21990b92d73e42b511739b482c4d1bdacf54154f5347e027c84b9c3df65",
+  "sessions": [
+    "01a195ec-9af1-7490-aef3-4fbe08834b00"
+  ],
+  "models": [
+    {
+      "provider": "magpie",
+      "model": "agentrouter/gpt-6.1-sol",
+      "responseModel": null,
+      "stopReason": "stop"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "id": "d4140d75e073c636e6a03ec5",
+  "task": "EV-09449b9b0222",
+  "role": "execute",
+  "actor": "evolution-author",
+  "attempt": 1,
+  "harness": "pi",
+  "requested_model": "magpie/agentrouter/gpt-6.1-sol",
+  "model_display": "agentrouter/gpt-6.1-sol",
+  "model_evidence": "explicit CLI --model, accepted runtime result; backend model not attested",
+  "state": "failed",
+  "started": 1793517297.565851,
+  "base_head": "38b4b03df3d384c261b61163f35e6e5bbc4ae633",
+  "timeout_seconds": 900,
+  "exit_code": 0,
+  "error": "ValueError: Missing terminal completion of the final turn",
+  "finished": 1793517538.168093,
+  "stdout.json_sha256": "4541058927375bb9f2824ca18409ed79c8c71e6324a637201de0d627a1fbbf05",
+  "stderr.log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "prompt.txt_sha256": "dc89671235c7aba2031bb654fb0a310a25d8d75effd5e9c477ecf7bcbf9a509b",
+  "tool_calls": [
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "edit"
+    },
+    {
+      "name": "edit"
+    },
+    {
+      "name": "edit"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    },
+    {
+      "name": "read"
+    }
+  ]
+}

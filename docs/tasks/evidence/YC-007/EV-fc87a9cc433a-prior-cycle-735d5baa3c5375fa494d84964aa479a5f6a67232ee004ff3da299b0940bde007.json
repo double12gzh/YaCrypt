@@ -1,0 +1,81 @@
+{
+  "id": "EV-fc87a9cc433a",
+  "state": "failed",
+  "source": {
+    "kind": "snapshot_directory_replacement",
+    "key": "snapshot_directory_replacement",
+    "path": "scripts/agy_runner.py",
+    "head": "e423762366a47a2a422e58f7edf168f42c637d7a",
+    "evidence": {
+      "before": "d590e9519849fc07e1c0f54c1721b2a8a3333751c2313d5b778d69143ea39daf",
+      "after": "fe0628def94e7da97949aa84624029e54898549b1baf9dcc2a0df4b747181fc5",
+      "stable": false
+    },
+    "goal": "Fix worktree_digest so replacing a tracked file with a directory has the same snapshot before and after commit. Preserve deletion, rename, symlink and coordinator-edit detection; add a meaningful regression.",
+    "allowed_paths": [
+      "scripts/agy_runner.py",
+      "scripts/test_agy_runner.py",
+      "docs/subsystems/coordination.md"
+    ],
+    "state": "queued",
+    "generation": 2,
+    "seen": 1793517983.98119,
+    "previous_task": "EV-09449b9b0222",
+    "reconciled_reason": "PI exited normally and the supervisor stopped its group; transport parser rejected a legitimate settlement event. Draft and failed retrospective preserved. Authorize one fresh bounded generation after parser fix.",
+    "task": "EV-fc87a9cc433a"
+  },
+  "started": 1793517983.98176,
+  "policy": {
+    "automatic_kinds": [
+      "snapshot_directory_replacement",
+      "broken_markdown_link"
+    ],
+    "author": {
+      "harness": "pi",
+      "model": "magpie/agentrouter/gpt-6.1-sol"
+    },
+    "reviewer": {
+      "harness": "omp",
+      "model": "magpie/amd/DeepSeek-V4.1-Flash"
+    },
+    "run_seconds": 900,
+    "gate_seconds": 900
+  },
+  "agent_runs": 2,
+  "stages": [
+    {
+      "stage": "provisioning",
+      "time": 1793517983.98242
+    },
+    {
+      "stage": "executing",
+      "time": 1793517984.077588
+    },
+    {
+      "stage": "validating",
+      "time": 1793518310.731124
+    },
+    {
+      "stage": "reviewing",
+      "time": 1793518367.483053
+    },
+    {
+      "stage": "reviewed",
+      "time": 1793518456.9706938
+    },
+    {
+      "stage": "failed",
+      "time": 1793518456.970999
+    }
+  ],
+  "pid": 94033,
+  "worktree": "/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/agentctl/EV-fc87a9cc433a-1",
+  "integration": "/Users/jeffreyguan/Desktop/YaCrypt/.worktrees/evolution-EV-fc87a9cc433a",
+  "branch": "codex/evolution-EV-fc87a9cc433a",
+  "author_run": "058b6e5bc7041a79a4970eec",
+  "head": "9a27ea19ef03f1993871e5bc98e37a2ab4877555",
+  "review_run": "2dc0c8eca629a19ddb07983b",
+  "verdict": "ISSUES",
+  "error": "Error: Independent review did not pass; automatic retry disabled",
+  "finished": 1793518456.970998
+}

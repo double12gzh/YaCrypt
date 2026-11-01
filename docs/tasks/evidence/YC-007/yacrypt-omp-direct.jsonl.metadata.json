@@ -1,0 +1,14 @@
+{
+  "raw_sha256": "0d336a9af2e5198f9e03d42f4d6fcf9b2c9aeb603a3cf6d82a1c1cfdf4e189d6",
+  "sessions": [
+    "01a195ec-b624-74cb-be31-9e402854f582"
+  ],
+  "models": [
+    {
+      "provider": "magpie",
+      "model": "amd/DeepSeek-V4.1-Flash",
+      "responseModel": null,
+      "stopReason": "stop"
+    }
+  ]
+}

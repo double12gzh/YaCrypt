@@ -128,6 +128,14 @@ class EvolutionTests(unittest.TestCase):
         with patch('evolution.snapshot_probe',return_value={'stable':True}),patch.dict(os.environ,{'EV_DOC_FIX':'1','EV_REVIEW_ISSUES':'1'}),patch('evolution.coauthor',return_value='Co-Authored-By: GPT <noreply@openai.com>'):
             failed=flow.tick(self.root,policy);self.assertEqual(failed['state'],'failed')
             self.assertEqual(flow.resume(failed['id'],False,'not approved yet')['state'],'failed')
+            # Late recovery must fail before a gate, model call or journal mutation.
+            directory=flow.directory/failed['id']
+            journal=(directory/'cycle.json').read_bytes()
+            with patch('evolution.time.time',return_value=flow.ledger.task(failed['id'])['expires']+1),patch('evolution.full_gate') as late_gate,patch('evolution.execute') as late_run:
+                with self.assertRaisesRegex(Error,'original lease'):
+                    flow.resume(failed['id'],True,'late explicit recheck')
+                late_gate.assert_not_called();late_run.assert_not_called()
+            self.assertEqual((directory/'cycle.json').read_bytes(),journal)
             os.environ.pop('EV_REVIEW_ISSUES')
             result=flow.resume(failed['id'],True,'operator requests one evidence-backed recheck')
         self.assertEqual(result['state'],'complete',result)

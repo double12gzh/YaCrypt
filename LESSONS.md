@@ -31,3 +31,12 @@ finish 仅核对目标 ref 时也会接受脏工作区。路径保留原始分�
 执行快照必须在提交前后稳定，包括删除和重命名。正常退出也需停止本次进程组，之后才保存快照。
 不能用服务 SUCCESS、手工工具标签或格式不合规的 PASS 代替有效产物；原始回执与提交 SHA 必须可追溯。
 证据：[真实 agy 复盘](docs/tasks/YC-005-retrospective.md)。Seen：2026-11-01（一次）。
+
+## EV-fc87a9cc433a：自动探针的已验证记录
+
+探针 snapshot_directory_replacement 在 e423762366a47a2a422e58f7edf168f42c637d7a 失败，在 9a27ea19ef03f1993871e5bc98e37a2ab4877555 通过。
+这是一条事实记录，尚未自动晋升为工程规范。证据见 [复盘](docs/tasks/EV-fc87a9cc433a-retrospective.md)。
+
+## YC-007：协议、审查与恢复都要绑定可复现事实
+
+真实 pi 完成事件可带 agent_settled；只凭退出码或单一末事件判断会丢弃合法产物。显式 responseModel 冲突应拒绝，不能用工具标签证明模型。审查的阻塞意见须核对源码与复现，非阻塞建议不等于失败；保留原结论并显式复核，不能改写成 PASS。恢复前先检查租约能覆盖验证时间，过期不先消耗门禁/模型资源。上述协议、失败不重派、worktree 隔离与租约边界已有回归。见 [复盘](docs/tasks/YC-007-retrospective.md)。Seen：2026-11-01（一次）。

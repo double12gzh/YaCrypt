@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import test_agentctl as fixtures
 from agentctl import Error, git
-from agy_runner import execute
+from agy_runner import execute, worktree_digest
 
 
 class RunnerTests(unittest.TestCase):
@@ -51,6 +51,20 @@ head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
 if mode == 'accept-edits':
     if kind == 'delete': Path('docs/start.md').unlink()
     if kind == 'rename': Path('docs/start.md').rename('docs/renamed.md')
+    if kind == 'directory':
+        path = Path('docs/start.md')
+        path.unlink()
+        (path / 'nested').mkdir(parents=True)
+        (path / 'nested' / 'child.md').write_text('replacement child\n')
+    if kind == 'symlink':
+        target = Path('docs/link-target')
+        target.mkdir()
+        (target / 'one.md').write_text('same content\n')
+        (target / 'two.md').write_text('same content\n')
+        Path('docs/start.md').unlink()
+        Path('docs/start.md').symlink_to('link-target')
+        Path('docs/file-link.md').symlink_to('link-target/one.md')
+        Path('docs/dangling-link.md').symlink_to('absent-one')
     if kind == 'background':
         subprocess.Popen([sys.executable, '-c', "import time; from pathlib import Path; time.sleep(1); Path('docs/late.md').write_text('late')"])
     Path('docs/result.md').write_text('implemented by fake fixture\n')
@@ -176,6 +190,71 @@ print(json.dumps(dict(status='SUCCESS', conversation_id='fake-conversation', res
         wt = self.task['worktree']
         git(wt, 'add', '-A'); git(wt, 'commit', '-m', 'rename fixture')
         self.ledger.submit('one', self.task['token'], git(wt, 'rev-parse', 'HEAD'), self.report)
+
+    def test_original_directory_replacement_probe_is_stable(self):
+        from evolution import snapshot_probe
+        # The probe imports these scripts but runs Git only in its temporary repo.
+        result = snapshot_probe(Path(__file__).resolve().parents[1])
+        self.assertTrue(result['stable'], result)
+
+    def test_directory_replacement_snapshot_survives_commit_and_rejects_edits(self):
+        os.environ['FAKE_AGY'] = 'directory'
+        record = self.run_author()
+        self.assertEqual(record['state'], 'succeeded', record.get('error'))
+        wt = Path(self.task['worktree'])
+        child = wt / 'docs/start.md/nested/child.md'
+        self.assertEqual(child.read_text(), 'replacement child\n')
+        snapshot = record['worktree_digest']
+        self.assertEqual(snapshot, worktree_digest(wt))
+        git(wt, 'add', '-A')
+        self.assertEqual(snapshot, worktree_digest(wt), 'Staging must not change the snapshot')
+        git(wt, 'commit', '-m', 'directory replacement fixture')
+        self.assertEqual(snapshot, worktree_digest(wt), 'Committing must not change the snapshot')
+        submitted = self.ledger.submit('one', self.task['token'], git(wt, 'rev-parse', 'HEAD'), self.report)
+        self.assertEqual(submitted['state'], 'review')
+
+        child.write_text('coordinator changed the replacement child\n')
+        self.assertNotEqual(snapshot, worktree_digest(wt))
+        git(wt, 'add', '-A'); git(wt, 'commit', '-m', 'coordinator edit fixture')
+        with self.assertRaisesRegex(Error, 'snapshot'):
+            self.ledger.submit('one', self.task['token'], git(wt, 'rev-parse', 'HEAD'), self.report)
+
+    def test_symlink_snapshots_survive_commit_and_detect_retargeting(self):
+        os.environ['FAKE_AGY'] = 'symlink'
+        record = self.run_author()
+        self.assertEqual(record['state'], 'succeeded', record.get('error'))
+        wt = Path(self.task['worktree'])
+        snapshot = record['worktree_digest']
+        git(wt, 'add', '-A')
+        self.assertEqual(snapshot, worktree_digest(wt))
+        git(wt, 'commit', '-m', 'symlink fixture')
+        self.assertEqual(snapshot, worktree_digest(wt))
+        submitted = self.ledger.submit('one', self.task['token'], git(wt, 'rev-parse', 'HEAD'), self.report)
+        self.assertEqual(submitted['state'], 'review')
+
+        cases = (
+            ('start.md', 'link-target', '.'),
+            ('file-link.md', 'link-target/one.md', 'link-target/two.md'),
+            ('dangling-link.md', 'absent-one', 'absent-two'),
+        )
+        for name, original, replacement in cases:
+            with self.subTest(link=name):
+                link = wt / 'docs' / name
+                self.assertTrue(link.is_symlink())
+                self.assertEqual(os.readlink(link), original)
+                link.unlink(); link.symlink_to(replacement)
+                try:
+                    # Same-content files and missing/directory targets must not hide a retarget.
+                    self.assertNotEqual(snapshot, worktree_digest(wt))
+                finally:
+                    link.unlink(); link.symlink_to(original)
+                self.assertEqual(snapshot, worktree_digest(wt))
+
+        link = wt / 'docs/start.md'
+        link.unlink(); link.symlink_to('.')
+        git(wt, 'add', 'docs/start.md'); git(wt, 'commit', '-m', 'retarget directory symlink fixture')
+        with self.assertRaisesRegex(Error, 'snapshot'):
+            self.ledger.submit('one', self.task['token'], git(wt, 'rev-parse', 'HEAD'), self.report)
 
     def test_normal_exit_stops_background_child_before_snapshot(self):
         import time
