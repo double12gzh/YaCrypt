@@ -1,0 +1,25 @@
+[
+  {
+    "kind": "snapshot_directory_replacement",
+    "key": "snapshot_directory_replacement",
+    "path": "scripts/agy_runner.py",
+    "head": "e423762366a47a2a422e58f7edf168f42c637d7a",
+    "evidence": {
+      "before": "d590e9519849fc07e1c0f54c1721b2a8a3333751c2313d5b778d69143ea39daf",
+      "after": "fe0628def94e7da97949aa84624029e54898549b1baf9dcc2a0df4b747181fc5",
+      "stable": false
+    },
+    "goal": "Fix worktree_digest so replacing a tracked file with a directory has the same snapshot before and after commit. Preserve deletion, rename, symlink and coordinator-edit detection; add a meaningful regression.",
+    "allowed_paths": [
+      "scripts/agy_runner.py",
+      "scripts/test_agy_runner.py",
+      "docs/subsystems/coordination.md"
+    ],
+    "state": "resolved",
+    "generation": 2,
+    "seen": 1793517983.98119,
+    "previous_task": "EV-09449b9b0222",
+    "reconciled_reason": "PI exited normally and the supervisor stopped its group; transport parser rejected a legitimate settlement event. Draft and failed retrospective preserved. Authorize one fresh bounded generation after parser fix.",
+    "task": "EV-fc87a9cc433a"
+  }
+]
