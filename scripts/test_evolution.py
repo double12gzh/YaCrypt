@@ -71,6 +71,19 @@ class EvolutionTests(unittest.TestCase):
         self.assertIn(result['id'],(target/'LESSONS.md').read_text())
         self.assertIn('未合并 main',(target/'docs/tasks'/(result['id']+'-retrospective.md')).read_text())
 
+    def test_reconcile_requires_stopped_and_grants_a_new_explicit_generation(self):
+        flow=self.prepare()
+        with patch('evolution.snapshot_probe',return_value={'stable':True}),patch('evolution.execute',return_value={'state':'failed'}):
+            result=flow.tick(self.root,POLICY)
+        with self.assertRaisesRegex(Error,'stopped'):
+            flow.reconcile(result['id'],False,'inspect')
+        item=flow.reconcile(result['id'],True,'operator verified child stopped; allow another bounded attempt')
+        self.assertEqual(item['generation'],2)
+        self.assertEqual(item['state'],'detected')
+        self.assertNotIn('task',item)
+        self.assertEqual(self.ledger.task(result['id'])['state'],'ready')
+        self.assertTrue(Path(result['worktree']).exists())
+
     def test_dirty_discovery_and_concurrent_cycle_are_rejected(self):
         flow=self.prepare()
         (self.root/'docs/start.md').write_text('dirty')

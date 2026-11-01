@@ -67,6 +67,11 @@ for e in [dict(type='session',id='fixture-session'),dict(type='message_end',mess
         events=[dict(type='session',id='test'),dict(type='message_end',message=msg),dict(type='agent_end')]
         def parse():return parse_events('\n'.join(json.dumps(e) for e in events),'magpie/group/gemini-3.8-flash')
         self.assertEqual(parse()['response'],'OK')
+        events.append(dict(type='agent_settled',aborted=False))
+        self.assertEqual(parse()['response'],'OK')
+        events[-1]['aborted']=True
+        with self.assertRaisesRegex(ValueError,'terminal'):parse()
+        events.pop()
         msg['responseModel']='deepseek-v4.1-flash'
         with self.assertRaisesRegex(ValueError,'contradicts'):parse()
         del msg['responseModel']

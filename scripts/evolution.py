@@ -111,6 +111,8 @@ class Evolution:
                 # A queued attempt needs explicit reconciliation; never spend again on each scan.
                 if old and old['state']=='queued':continue
                 item.update(state='detected',generation=(old or {}).get('generation',1),seen=time.time())
+                if old:
+                    item.update({k:old[k] for k in ('previous_task','reconciled_reason') if k in old})
                 if old and old['state']=='resolved':item['generation']=old['generation']+1
                 self.ledger.db.execute('INSERT OR REPLACE INTO candidates VALUES (?,?)',(item['key'],json.dumps(item)))
             keys={x['key'] for x in found}
@@ -129,12 +131,31 @@ class Evolution:
     def candidates(self):
         return [json.loads(r[0]) for r in self.ledger.db.execute('SELECT body FROM candidates ORDER BY key')]
 
+    def reconcile(self, name, stopped, reason):
+        require(stopped and reason.strip(), 'Confirm old processes stopped and provide a reason')
+        with self.lock():
+            matches=[c for c in self.candidates() if c.get('task')==name and c['state']=='queued']
+            require(len(matches)==1, 'No queued candidate for this task')
+            item=matches[0]
+            row=self.ledger.db.execute('SELECT body FROM tasks WHERE id=?',(name,)).fetchone()
+            if row:
+                task=json.loads(row[0])
+                require(task['state']!='integrated', 'Integrated task must be merged or inspected, not retried')
+                if task['state']!='ready':self.ledger.recover(name,True,reason)
+            with self.ledger.transaction():
+                item.update(state='detected',generation=item['generation']+1,
+                            previous_task=name,reconciled_reason=reason)
+                item.pop('task',None)
+                self.ledger.db.execute('UPDATE candidates SET body=? WHERE key=?',(json.dumps(item),item['key']))
+            return item
+
     def tick(self,root,policy):
         validate_policy(policy)
         with self.lock():
             self.scan(root)
             choices=[c for c in self.candidates() if c['state']=='detected' and c['kind'] in policy['automatic_kinds']]
             if not choices:return {'state':'idle','agent_runs':0}
+            require(not self.ledger.db.execute('SELECT 1 FROM integration').fetchone(), 'Integration slot occupied; do not spend model budget')
             candidate=choices[0]
             name='EV-'+hashlib.sha256((candidate['key']+':'+str(candidate['generation'])).encode()).hexdigest()[:12]
             directory=self.directory/name;directory.mkdir(mode=0o700)
@@ -249,8 +270,11 @@ def validate_policy(policy):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo',default='.')
-    parser.add_argument('action',choices=['scan','status','tick','watch'])
+    parser.add_argument('action',choices=['scan','status','tick','watch','reconcile'])
     parser.add_argument('--policy',type=Path)
+    parser.add_argument('--task')
+    parser.add_argument('--stopped',action='store_true')
+    parser.add_argument('--reason',default='')
     parser.add_argument('--cycles',type=int,default=1)
     parser.add_argument('--interval',type=int,default=300)
     args=parser.parse_args();ledger=None
@@ -259,6 +283,7 @@ def main():
     try:
         ledger=Ledger(args.repo);flow=Evolution(ledger)
         if args.action=='status':result=flow.candidates()
+        elif args.action=='reconcile':result=flow.reconcile(args.task,args.stopped,args.reason)
         elif args.action=='scan':
             with flow.lock():result=flow.scan(ledger.repo)
         else:

@@ -40,10 +40,10 @@ def command(harness, executable, model, role, seconds, prompt):
     if harness == 'pi':
         provider, model_id = model.split('/', 1)
         return [executable, '--provider', provider, '--model', model_id, '--mode', 'json',
-                '--print', '--no-session', '--no-extensions', '--no-mcp', '--no-skills',
+                '--print', '--thinking', 'low', '--no-session', '--no-extensions', '--no-mcp', '--no-skills',
                 '--no-context-files', '--no-prompt-templates', '--no-themes', '--no-approve',
                 '--tools', tools, '--', prompt]
-    return [executable, '--model', model, '--mode', 'json', '--print', '--no-session',
+    return [executable, '--model', model, '--mode', 'json', '--print', '--thinking', 'low', '--no-session',
             '--no-extensions', '--no-skills', '--no-context-files', '--no-rules', '--no-lsp',
             '--no-title', '--no-prewalk', '--no-pty', '--max-time', str(seconds),
             '--tools', tools, '--', prompt]
@@ -60,7 +60,11 @@ def parse_events(raw, requested):
     assistant = [m for m in messages if m.get('role') == 'assistant']
     if len(sessions) != 1 or not sessions[0].get('id') or not endings or not assistant:
         raise ValueError('Missing session, terminal event or assistant message')
-    if events[-1].get('type') != 'agent_end' or events[-1].get('isTerminal') is False:
+    terminal_index = max(i for i, e in enumerate(events) if e.get('type') == 'agent_end')
+    tail = events[terminal_index + 1:]
+    if (endings[-1].get('isTerminal') is False or endings[-1].get('willRetry') is True
+            or any(e.get('type') != 'agent_settled' or e.get('aborted') is not False for e in tail)
+            or terminal_index < max(i for i, e in enumerate(events) if e.get('type') == 'message_end')):
         raise ValueError('Missing terminal completion of the final turn')
     if any(m.get('stopReason') in ('error', 'aborted', 'length') for m in assistant):
         raise ValueError('Model turn failed, aborted or was truncated')
