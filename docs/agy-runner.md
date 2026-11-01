@@ -34,7 +34,7 @@ python3 scripts/agentctl.py run YC-EXAMPLE --role review --model claude-sonnet-5
 ## 观察与停止
 
 run 前台运行，另一个终端可用 `show <id>` 查看 active_run、pid、请求模型及持久回执。
-正常退出、超时和 Ctrl-C/SIGTERM 都会在保存快照前清理本次进程组；清理期间忽略重复中断，保留 stdout/stderr/prompt/receipt。
+正常退出、超时和 Ctrl-C/SIGTERM/SIGHUP/SIGQUIT 都会在保存快照前清理本次进程组；清理期间忽略重复中断，保留 stdout/stderr/prompt/receipt。
 监督进程被 SIGKILL 或机器中断后，先查现场、停止实际进程组，再 recover --stopped；不根据过期 PID 盲目杀进程。
 失败后的部分文件保留，不自动还原。先复查 diff，再恢复新尝试或确认修正后重新运行。
 
@@ -47,3 +47,5 @@ run 前台运行，另一个终端可用 `show <id>` 查看 active_run、pid、�
 无交互调用通过 `--settings` 仅为本次会话允许两条命令：`python3 scripts/test_agentctl.py`、
 `python3 scripts/test_agy_runner.py`。不修改全局权限，不跳过权限检查。其他命令需要协调者运行，
 不得通过拼接 shell 命令扩展权限；出现 denied_actions 或空答复即失败，即使 agy 标记 SUCCESS。
+
+单段 diff/额外指令限 80 KiB，组合提示词限 96 KiB，以适配命令行参数上限；更大任务需拆分。

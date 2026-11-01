@@ -36,9 +36,13 @@ settings = json.loads(args[args.index('--settings') + 1])
 assert settings == {'permissions': {'allow': ['command(python3 scripts/test_agentctl.py)', 'command(python3 scripts/test_agy_runner.py)']}}
 kind = os.environ.get('FAKE_AGY', 'success')
 if kind == 'hang':
-    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    child = subprocess.Popen([sys.executable, '-c', "import time, os; from pathlib import Path; time.sleep(2); Path(os.environ['CHILD_PID'] + '.late').write_text('survived'); time.sleep(30)"])
     Path(os.environ['CHILD_PID']).write_text(str(child.pid))
     time.sleep(30)
+if kind == 'nested':
+    print('[' * 20000); sys.exit(0)
+if kind == 'denied':
+    print(json.dumps(dict(status='SUCCESS', response='misleading', conversation_id='fake', denied_actions=[{'action':'command'}]))); sys.exit(0)
 if kind == 'bad':
     print('not-json'); sys.exit(0)
 mode = args[args.index('--mode') + 1]
@@ -127,10 +131,10 @@ print(json.dumps(dict(status='SUCCESS', conversation_id='fake-conversation', res
         record = self.run_author(1)
         self.assertEqual(record['state'], 'timed_out')
         self.assertNotIn('active_run', self.ledger.task('one'))
-        # A just-killed orphan may briefly be a zombie; it must not still be running.
-        import subprocess
-        state = subprocess.run(['ps', '-o', 'stat=', '-p', pidfile.read_text()], text=True, capture_output=True).stdout.strip()
-        self.assertTrue(not state or state.startswith('Z'), state)
+        # Verify the child cannot perform its delayed write; no ps permission needed.
+        import time
+        time.sleep(1.3)
+        self.assertFalse(Path(str(pidfile) + '.late').exists())
 
     def test_review_mutation_fails_and_preserves_diff(self):
         self.submit_author(); os.environ['FAKE_AGY'] = 'mutate'
@@ -177,6 +181,18 @@ print(json.dumps(dict(status='SUCCESS', conversation_id='fake-conversation', res
         self.assertEqual(self.run_author()['state'], 'succeeded')
         time.sleep(1.2)
         self.assertFalse((Path(self.task['worktree']) / 'docs/late.md').exists())
+
+    def test_deeply_nested_output_is_failed_and_clears_reservation(self):
+        os.environ['FAKE_AGY'] = 'nested'
+        record = self.run_author()
+        self.assertEqual(record['state'], 'failed')
+        self.assertNotIn('active_run', self.ledger.task('one'))
+
+    def test_denied_action_cannot_be_success_even_with_response(self):
+        os.environ['FAKE_AGY'] = 'denied'
+        record = self.run_author()
+        self.assertEqual(record['state'], 'failed')
+        self.assertIn('denied actions', record['error'])
 
     def test_active_run_blocks_submit_and_requires_stopped_recovery(self):
         with self.ledger.transaction():
