@@ -154,3 +154,11 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
    * 仅修改当前任务分配的模块文件，未经用户明确指示，严禁执行跨模块全局格式化或擅自升级 `Cargo.toml` 依赖。
    * 未经用户显式确认，**严禁**执行 `git reset --hard`、`git clean -fd`、`git checkout -- .`、`git restore .` 或 `git push --force`。
 
+### 2.5 严禁家目录/全盘无界扫描（防 macOS TCC 阻塞与 Watchdog 超时）
+
+* **背景**：在 macOS 后台守护进程（如 Multica daemon、无头 `agy` / `pi` / `omp` 会话）中，对 `~`、`/Users` 或 `/` 执行递归遍历会触碰 `~/Library`、云盘挂载点及受 macOS TCC 隐私保护的目录（如 `~/Desktop`、`~/Documents`、`~/Downloads`），导致无交互终端的子进程永久阻塞，直至触发 2 小时 `idle_watchdog` 被强杀（`exit 137`）。
+* **强制规则**：
+  1. **严禁**运行 `find ~`、`find /`、`find /Users` 或跨家目录的无界递归搜索（如 `grep -R ~`、`rg ... ~`）。
+  2. 代码与配置检索默认严格限制在当前仓库/Worktree 目录内；若确需排查本地工具链或漏洞库缓存（如 Cargo / RustSec `advisory-db`），**必须精确限定到具体缓存子目录**（例如 `~/.cargo`、`~/.cache/cargo-deny`）并显式附加 `-maxdepth` 边界。
+
+
