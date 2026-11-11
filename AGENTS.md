@@ -106,6 +106,8 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
 3. 禁止用 `ignore` / `allow` / 修改全局 Cargo 配置去压掉 warning 或缺失索引；审计工具可临时装在 `target/` 下。
 4. 结论必须区分“已验证 / 未验证 / 覆盖缺口”，禁止把“无匹配的拒绝级 advisory”表述为“依赖审计通过”。
 
+**工具链漂移（本地固定版本 vs CI 浮动 `@stable`）**：本地 `rustc 1.92.0` 全绿不代表 CI 全绿——CI 用 `dtolnay/rust-toolchain@stable` 装到过 Rust 1.99.0，其强化后的 `clippy::unnecessary_sort_by` 把 `src/tui/app.rs` 里 `.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()))` 判为错误（`-D warnings` 下直接 exit 101）。规则：排序键返回自有值（如 `to_lowercase()` 产生的新 `String`）时写 `sort_by_key(|a| a.name.to_lowercase())`；只有键借用自闭包参数（如 `|a, b| a.0.cmp(&b.0)`）才保留 `sort_by`。改排序、遍历、迭代器链后要对照 CI 结果收口，不能只凭本地门禁宣布完成。
+
 ---
 
 ## 2. Git 提交与 Shell 命令规范（所有 Agent 强制遵守）
