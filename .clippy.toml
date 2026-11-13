@@ -6,3 +6,5 @@
 too-many-arguments-threshold = 10
 too-many-lines-threshold = 300
 max-struct-bools = 3
+# 与固定工具链保持一致：clippy 的 MSRV 建议必须落在 CI/本地同一版本上（H-01）
+msrv = "1.92"

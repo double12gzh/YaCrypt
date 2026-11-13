@@ -9,6 +9,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # 精确工具链版本，必须与仓库根目录 rust-toolchain.toml 的 channel 一致。
+  # 禁止改回浮动通道（@stable/@beta/@nightly）：那会让 CI 与本地门禁不可互证。
+  # 校验：scripts/test_harness.py（完整门禁的一部分）。
+  RUST_TOOLCHAIN: "1.92.0"
 
 jobs:
   # 代码检查和测试
@@ -20,8 +24,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           components: clippy, rustfmt
 
       - name: Cache dependencies
@@ -65,8 +70,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.target }}
 
       - name: Cache dependencies
@@ -119,7 +125,9 @@ jobs:
           fetch-depth: 0
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Check if version already exists
         id: check_version

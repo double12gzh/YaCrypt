@@ -11,6 +11,7 @@ run() {
     "$@"
 }
 run python3 scripts/test_verify.py
+run python3 scripts/test_harness.py
 run python3 scripts/test_agentctl.py
 run python3 scripts/test_agy_runner.py
 run python3 scripts/test_runtime_adapters.py

@@ -53,3 +53,15 @@ finish 仅核对目标 ref 时也会接受脏工作区。路径保留原始分�
 ## YC-009：质量门禁通过不等于覆盖了产品验收
 
 原门禁通过，但 80×12 文件浏览器会隐藏选中项；原测试只断言不崩溃。新增可见性回归在旧实现失败、修复后通过，并验证导航、缩放和路径保留。列表容量从实际视口推导，不用固定最少行数；显示裁剪不改变底层文件路径。测试覆盖缺口可经独立复现与显式批准成为任务，不把通过的诊断改写成失败。模型超时/上游断流不是代码验收结论；保留原回执，显式恢复或选择已授权的独立验收服务。见 [复盘](docs/tasks/YC-009-retrospective.md)。
+
+## YC-010：门禁必须与 CI 钉同一个工具链
+
+CI 浮动 `dtolnay/rust-toolchain@stable` 解析到 Rust 1.99.0，本机为 `rustc 1.92.0`；基线代码只在 CI 命中 Rust 1.99.0 强化的 `clippy::unnecessary_sort_by`，4 处错误 / `exit 101` 阻断 PR #3，而本地完整门禁 PASS。固定版本写入 `rust-toolchain.toml`，CI 引用同一字符串，`.clippy.toml` 的 `msrv` 同步；`scripts/test_harness.py` 拒绝浮动通道、CI 与文件版本不一致、缺 `toolchain:` 的步骤以及高于固定版本的 `rust-version`。本地绿只在同一工具链上才能外推到 CI。Seen：2026-11-13（一次）。证据：[周报](docs/harness/2026-11-13.md)。
+
+## YC-011：规则身份用 ID，且必须落在会合并的分支
+
+上周 `§1.7`（`e2db8a2`）与本周 `§1.8`（`98c5ff3`）分别停在未合并的任务分支；以 `main` 为基线开工时两份规则都不存在，并行分支还要在派工里互相避让节号。规则改用 `H-xx` 标识、节号允许合并方重排；`scripts/test_harness.py` 校验节号连续、ID 唯一、技能引用存在。同一周在父任务线程 `@mention` 后续协作者，提交落到 `jeff-207` 而非目标 `jeff-186`；提交前必须 `git branch --show-current` 核对目标分支。Seen：2026-11-13（一次）。证据：同上。
+
+## YC-012：审计 exit 0 不等于告警消失
+
+`cargo deny` 四个分组均 `ok`，但仍有 140 条 `index-failure`（无法定位 registry index，yanked 状态不可核对）与 1 条 `license-not-encountered`（ISC 未被使用）。连续两周出现，按"重复出现即晋升"写入 `AGENTS.md` §1.7 `H-05`；check 技能要求三态并原样披露，禁止用 `ignore`/`allow`/放宽 `deny.toml` 换绿色。Seen：2026-11-13（连续第二周）。证据：同上；yanked 覆盖缺口归 JEFF-187。

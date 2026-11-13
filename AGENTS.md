@@ -14,6 +14,7 @@
 ### 1.1 构建、测试与质量门禁命令
 
 完整门禁统一运行 `bash scripts/verify.sh`（或 `make verify` / `make all`）。
+工具链由仓库根目录 `rust-toolchain.toml` 固定为精确版本，CI 使用同一版本（`scripts/test_harness.py` 强制，见 §1.7 `H-01`）。
 依赖、分项调试命令及证据格式见 [验证说明](docs/verification.md)。
 `/check`、CI、原生 hook 和 pre-commit 配置均调用这个入口。
 提交前运行完整门禁；单项 Cargo 命令用于定位问题，不能替代完整验收。
@@ -82,6 +83,25 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
 | `gen-password` | `cli::cmd_generate_strong_password` | 基于拒绝采样生成无模偏差的高强度随机口令 |
 | `encrypt-file-with-key` | `cli::cmd_encrypt_file_with_key_cli` | 使用已有的 X25519 公钥直接加密文件（可选 `--sign-key`） |
 | `decrypt-private-key` | `cli::cmd_decrypt_backup` | 解密并导出原始 Ed25519 私钥 PKCS#8 DER 数据 |
+
+### 1.7 高频失误防错检查单（每周 RSI 蒸馏）
+
+每周扫描 Git 历史与已完成 Issue 线程，把已记录的失败（一次失败 / 一次驳回 / 一次告警，**不是** grep 命中）固化为下列判据。
+**规则身份是 `H-xx` 编号，不是节号**：并行分支各自追加 AGENTS.md 时可能重排 `1.7`/`1.8`，合并方可以改节号，但禁止改 ID 或让两个规则共用一个 ID。
+最近一周的事件计数、证据链接与未固化项见 [docs/harness/2026-11-13.md](docs/harness/2026-11-13.md)。
+
+| 规则 | 判据（提交前逐条自问） | 机器检查 | 本周事件 |
+| :--- | :--- | :--- | :--- |
+| `H-01` | **本地绿 ≠ CI 绿**：工具链只有一个真源 `rust-toolchain.toml`，CI 必须钉同一精确版本；禁止浮动 `@stable`/`@beta`/`@nightly`。升级版本是独立变更，须本地门禁与 CI 同时验证。 | `scripts/test_harness.py::ToolchainContractTests` | 1（PR 被 4 处 lint / exit 101 阻断） |
+| `H-02` | **中断不是结论**：`idle_watchdog`、`content_filter`、模型超时、截断回执都只能记为 BLOCKED；不得据此宣布失败、通过或已交付。恢复前先核对已落盘提交与分支。 | 人工（复核原始回执） | 3（`content_filter` ×2、`idle_watchdog` ×1） |
+| `H-03` | **委派必须落在目标线程与目标分支**：`@mention` 写到父任务线程会把后续提交写到错误分支；提交前必须 `git branch --show-current` 核对，且一次只改授权范围内的文件。 | 人工（分支名/提交核对） | 1（误落 `jeff-207` 分支） |
+| `H-04` | **未合并的规则等于没有规则**：Harness 交付物要落到会合并的基线分支；并行分支同日改 AGENTS.md 时用 `H-xx` ID 标识，先到的保持节号，后到的重排或合并。 | `scripts/test_harness.py::AgentsDocTests` | 2（`§1.7`/`§1.8` 分居两个未合并分支） |
+| `H-05` | **门禁 exit 0 ≠ 告警消失**：`cargo deny` 的 `index-failure`（yanked 无法核对）与 `license-not-encountered` 必须原样披露，禁止用 `ignore`/`allow`/放宽 `deny.toml` 换绿色。 | 人工（逐条披露）+ check 技能三态 | 2（140 条 `index-failure`、1 条 ISC warning，连续第二周） |
+| `H-06` | **事实陈述由源码核对**：测试归属（CLI / TUI / core）、覆盖范围、失败类别都按实际断言位置写；不按测试名或文件名推断，不用“已覆盖”代替“验证过”。 | 人工（验收会话复核断言位置） | 1（3 个主二进制测试实际属于 TUI） |
+| `H-07` | **安全策略标志必须贯穿所有分流**：`--require-signature` / `--signer` 一类策略在自动识别、显式模式、`--force` 覆盖等每条路径上都要生效，否则宁可拒绝而不是静默忽略。 | 人工（分流域穷举测试） | 1（SGPGv1 对称解密静默忽略签名要求） |
+| `H-08` | **新增回归必须接入唯一门禁并能在旧实现上失败**：`scripts/` 下每个 `test_*.py` 都要被 `scripts/verify.sh` 调用；修复类提交要给出撤销修复即失败的证据。 | `scripts/test_harness.py::GateWiringTests` | 1（沿用上周 R1，本周新建脚本即被此检查覆盖） |
+
+新规则的写入顺序：先确认有记录事件与证据文件 → 分配未占用的 `H-xx` → 补机器检查（能判定就不靠文字）→ 在周报里登记未固化原因。
 
 ---
 

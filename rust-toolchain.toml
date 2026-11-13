@@ -1,0 +1,14 @@
+# 单一工具链真源：本地 rustup 与 CI 都必须使用这个精确版本。
+#
+# 背景（2026-11-13 蒸馏，H-01）：此前 CI 使用浮动 `dtolnay/rust-toolchain@stable`，
+# 而本机为 rustc 1.92.0。CI 解析到 Rust 1.99.0 后，基线的 `.to_lowercase()` 排序键
+# 命中新强化的 `clippy::unnecessary_sort_by`，以 4 处错误 / exit 101 阻断 PR，
+# 而本地门禁全绿。浮动通道让"本地绿"与"CI 绿"不可互证。
+#
+# 升级流程：改本文件的 channel → 同步 `.github/workflows/cicd.yml` 的
+# `toolchain:` 输入（`scripts/test_harness.py` 强制两者一致）→ 本地跑
+# `rustup show active-toolchain` 与完整门禁 → 再提交。
+[toolchain]
+channel = "1.92.0"
+profile = "minimal"
+components = ["clippy", "rustfmt"]

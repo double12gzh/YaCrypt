@@ -37,3 +37,22 @@ Cargo 依赖及 RustSec 数据库初次获取需要网络；审计不可达是�
 运行监督需要 Python 的 POSIX waitid/WNOWAIT API；Apple 自带 Python 3.9.6 可能未编译这些 API。evolution 的 scan/tick/watch/resume/diagnose 和 agentctl run 在打开台账前检查；缺失时探测 PATH、/opt/homebrew/bin/python3、/usr/local/bin/python3 的现有解释器，打印提示并保持参数重启，同时为本进程及子进程优先使用所选 python3。不安装软件、不改全局 PATH；没有可用解释器则明确失败，不派工。纯台账操作仍可使用原解释器。直接运行完整门禁时也须将具备该 API 的 Python 放在 PATH 首位。
 
 质量入口回归 scripts/test_quality_intake.py 纳入完整门禁，使用临时 Git/SQLite、实际子进程和假模型 CLI，覆盖证据去重/漂移/篡改、批准前零派工、风险范围、原批准失效及批准后的完整反馈。真实产品覆盖缺口另用可失败的回归证明，不能用干净门禁代替不存在的产品验收。
+
+## 工具链与 Harness 契约
+
+工具链只有一个真源：仓库根目录 `rust-toolchain.toml` 的 `channel`。CI（`.github/workflows/cicd.yml`）必须引用同一精确版本，
+`.clippy.toml` 的 `msrv` 与之同主次版本。浮动通道（`@stable`/`@beta`/`@nightly`）会让本地门禁与 CI 不可互证：
+2026-11-13 的 PR #3 即因 CI 解析到 Rust 1.99.0、本机为 1.92.0，基线代码只在 CI 命中 `clippy::unnecessary_sort_by` 而失败。
+升级工具链是独立变更：改 `rust-toolchain.toml` → 同步 CI 的 `toolchain:` → 本地 `rustup show active-toolchain` 与完整门禁 → 再提交。
+
+`scripts/test_harness.py` 是完整门禁的一部分，只读版本控制文本、不联网、不跑 Cargo：
+校验工具链钉定与 CI 一致、`scripts/` 下每个 `test_*.py` 都被本入口调用、`AGENTS.md` 节号连续且 `H-xx` 规则 ID 唯一、
+跟版 check 技能只委派本入口并定义 PASS/FAIL/BLOCKED。新回归不接入本入口就不算被门禁覆盖。
+
+## 三态结论
+
+结论只有三种：**PASS**（完整入口在记录的提交上 `exit 0`，且逐条披露它输出的 warning）、
+**FAIL**（某阶段非零退出，报告阶段、退出码与失败输出，不越过首个失败）、
+**BLOCKED**（工具缺失、审计数据库不可达、会话被超时或 watchdog 中断）。BLOCKED 不能写成 PASS 或 FAIL。
+审计分组 `ok` 仍可能带 `index-failure`/`license-not-encountered` 告警；这些是覆盖缺口，不是干净结果，
+禁止用 `ignore`/`allow`/放宽 `deny.toml` 换取绿色。
