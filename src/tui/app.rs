@@ -464,8 +464,10 @@ impl TuiApp {
             }
         }
 
-        dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-        files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        // Sorting on a key owned by the closure (`String` from `to_lowercase`) keeps
+        // clippy::unnecessary_sort_by happy on floating CI toolchains.
+        dirs.sort_by_key(|a| a.name.to_lowercase());
+        files.sort_by_key(|a| a.name.to_lowercase());
         entries.extend(dirs);
         entries.extend(files);
         entries

@@ -83,6 +83,31 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
 | `encrypt-file-with-key` | `cli::cmd_encrypt_file_with_key_cli` | 使用已有的 X25519 公钥直接加密文件（可选 `--sign-key`） |
 | `decrypt-private-key` | `cli::cmd_decrypt_backup` | 解密并导出原始 Ed25519 私钥 PKCS#8 DER 数据 |
 
+### 1.8 解析/解密边界回归矩阵与安全策略分流
+
+*（§1.7 留给 JEFF-203 的「高频失误防错检查单」，本节编号从 1.6 跳到 1.8；两处合并后连续。本节只讲解析/解密边界，通用门禁与 warning 报告规则见 1.7。）*
+
+**边界矩阵**实现在 `crates/yacrypt-core/src/boundary_tests.rs`（`cargo test -p yacrypt-core boundary_tests`）。改动 SGPGv1 / SCFv1 解析、解密或写盘路径时必须保持其通过，并按下述维度补例：
+
+1. **strict prefix 截断**：SGPGv1 与 SCFv1（有签名 / 无签名两种布局）逐字节截断全部拒绝，**同时**保留完整容器可解析的正例——只有负例时，一个“一律拒绝”的实现也能通过。
+2. **长度与 flags 矩阵**：salt / nonce 长度字段错误、AAD 声明长度超过可用字节、ciphertext 声明长度 u64 溢出 / ±1 不匹配 / 尾随字节、`2..=255` 全部未支持 flags、短于 16 字节 AEAD tag；AAD 65535 正例与 65536 打包拒绝。
+3. **恶意 Argon2 头经真实入口**：`decrypt_file_symmetric`、`decrypt_backup_with_password`、`decrypt_workflow_with_password`，不要只测 `derive_key`；断言不产生输出，且 `force=true` 时既有 sentinel 内容不变。fixture 固定 m=256 KiB / t=1 / p=1，**禁止**为边界测试运行有效的高成本 KDF。
+4. **解密侧对抗性**：低阶 `ephemeral_pub`（用全零共享密钥真实加密，让 non-contributory 守卫成为唯一防线）、独立无效 Ed25519 签名、AAD 与头部字段不一致、必须签名却无签名、签名块被剥离；每条都断言“拒绝 + 不落盘 + 不覆盖”。
+5. **断言错误类别或安全后果**（`CryptError::Format/Key/Crypto` 加文件系统状态），不要绑定英文错误文案。
+6. **变异检验**：临时删掉对应守卫后，新测试必须失败；若删掉后仍通过，说明只覆盖了冗余防线，必须在任务记录中注明（例：SGPGv1 `salt_len` 守卫被删后下游长度检查仍拒绝，属纵深防御）。
+7. **已知兼容策略**：`parse_aad_map` 对重复键 last-wins；AEAD 认证绑定原始 AAD 字节而非解析后的 map，故不构成认证绕过。改协议行为需单独兼容性论证。
+
+**安全策略标志必须贯穿所有解密分流**：`--require-signature`、`--signer` 等策略参数必须在 CLI 的**每一条**解密分支上生效——自动识别 `.enc`（SGPGv1）、显式 `-c / --symmetric`、`.pubenc` 公钥路径都算。JEFF-208 已复现 SGPGv1 对称分支静默忽略这两个标志（`--force` 时还会覆盖既有输出），属 CLI 策略丢失，不是 Ed25519 伪造或 AEAD 破解；修复由 JEFF-208 单独分派，本节只沉淀规则。新增或改动分流时必须先问“该策略在此分支是否仍生效”，并补一条 CLI 级回归测试。
+
+**审计口径（exit 0 ≠ warnings 消失）**：
+
+1. `bash scripts/verify.sh` 退出 0 只代表门禁命令本身通过，**不等于**依赖审计全绿。
+2. 必须逐项读 cargo-deny 汇总：`advisories` 的 errors 与 warnings、`licenses` 的未使用允许项（如 `license-not-encountered`）、以及 `index-failure` 条数。`index-failure` 表示 yanked 状态无法核对，是覆盖缺口，必须在报告中写出条数与局限。
+3. 禁止用 `ignore` / `allow` / 修改全局 Cargo 配置去压掉 warning 或缺失索引；审计工具可临时装在 `target/` 下。
+4. 结论必须区分“已验证 / 未验证 / 覆盖缺口”，禁止把“无匹配的拒绝级 advisory”表述为“依赖审计通过”。
+
+**工具链漂移（本地固定版本 vs CI 浮动 `@stable`）**：本地 `rustc 1.92.0` 全绿不代表 CI 全绿——CI 用 `dtolnay/rust-toolchain@stable` 装到过 Rust 1.99.0，其强化后的 `clippy::unnecessary_sort_by` 把 `src/tui/app.rs` 里 `.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()))` 判为错误（`-D warnings` 下直接 exit 101）。规则：排序键返回自有值（如 `to_lowercase()` 产生的新 `String`）时写 `sort_by_key(|a| a.name.to_lowercase())`；只有键借用自闭包参数（如 `|a, b| a.0.cmp(&b.0)`）才保留 `sort_by`。改排序、遍历、迭代器链后要对照 CI 结果收口，不能只凭本地门禁宣布完成。
+
 ---
 
 ## 2. Git 提交与 Shell 命令规范（所有 Agent 强制遵守）
