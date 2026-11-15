@@ -279,6 +279,41 @@ fn directory_navigation_still_selects_and_renders_the_current_entry() {
 }
 
 #[test]
+fn directory_entries_sort_directories_first_and_names_case_insensitively() {
+    let fixture = Fixture::new();
+    for dir in ["Zebra", "apple", "Beta"] {
+        fs::create_dir(fixture.0.join(dir)).unwrap();
+    }
+    for file in ["README.md", "delta.txt", "Charlie.rs"] {
+        fs::write(fixture.0.join(file), b"sort fixture").unwrap();
+    }
+    fs::write(fixture.0.join(".hidden_secret"), b"hidden fixture").unwrap();
+
+    let entries = TuiApp::load_directory_entries(&fixture.0, false);
+    let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec![
+            ".. (Parent Directory)",
+            "apple",
+            "Beta",
+            "Zebra",
+            "Charlie.rs",
+            "delta.txt",
+            "README.md",
+        ],
+        "parent entry first, then directories, then files, each group ordered case-insensitively"
+    );
+    assert!(entries[0].is_parent, "the parent entry stays first");
+    assert!(entries[1..4].iter().all(|e| e.is_dir), "directories sort before files");
+    assert!(entries[4..].iter().all(|e| !e.is_dir), "files follow directories");
+
+    let with_hidden = TuiApp::load_directory_entries(&fixture.0, true);
+    let with_hidden_names: Vec<&str> = with_hidden.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(with_hidden_names[4], ".hidden_secret", "hidden files stay in the file group");
+}
+
+#[test]
 fn empty_and_extremely_tiny_viewports_render_safely() {
     let fixture = Fixture::new();
     let mut app = fixture.app(11);

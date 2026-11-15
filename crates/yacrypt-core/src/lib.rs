@@ -8,3 +8,6 @@ pub mod keystore;
 pub mod password;
 pub mod utils;
 pub mod workflow;
+
+#[cfg(test)]
+mod boundary_tests;
