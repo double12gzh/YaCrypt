@@ -12,22 +12,22 @@ Guide the user through encrypting a file with `yacrypt`:
 1. **Gather Parameters**:
    - Ask for the input file path to encrypt.
    - Determine which encryption mode the user wants:
-     - **New keypair**: Ask for `name` (key owner metadata) and optional `email` (defaults to `secure@example.com`).
-     - **Existing key**: Ask for the X25519 public key file path (`--key`, or inspect local keys with `cargo run -- key-list`) and optional signing key (`--sign-key`).
-     - **Symmetric password-only (`-c / --symmetric`)**: No public/private keys needed; encrypts directly into `<input>.enc` (`SGPGv1`).
+     - **New keypair**: Optional `--label <alias>` (stored only in local `0600` `labels.tsv`, never in ciphertexts).
+     - **Existing key**: Ask for the recipient X25519 public key path, local label, or `>=16`-char fingerprint prefix (`--key`, inspectable via `cargo run -- key-list`) and optional own signing key (`--sign-key`).
+     - **Symmetric password-only (`-c / --symmetric`)**: No public/private keys needed; encrypts directly into an anonymous `<random>.enc` (`SGPGv2`, padded to hide exact length) unless `-o` is specified.
 2. **Execute Encryption**:
-   - With a new keypair:
+   - With a new keypair (outputs anonymous `<random>.pubenc` by default, and skips `.decrypt.txt` for privacy unless `--instructions` is passed):
      ```bash
-     cargo run -- encrypt <input_file> <name> [email]
+     cargo run -- encrypt <input_file> [--label <alias>] [-o <output_path>] [--instructions]
      ```
-   - With an existing X25519 public key:
+   - With an existing X25519 public key or local label:
      ```bash
-     cargo run -- encrypt <input_file> --key <public_key_path> [--sign-key <signing_key_path>]
+     cargo run -- encrypt <input_file> --key <pubkey_path_or_label> [--sign-key <sign_key_path_or_label>] [-o <output_path>]
      ```
    - With symmetric password-only mode:
      ```bash
-     cargo run -- encrypt <input_file> -c
+     cargo run -- encrypt <input_file> -c [-o <output_path>]
      ```
 3. **Confirm Output**:
-   - Verify the `.pubenc` or `.enc` encrypted output file and `keystore/` files (if newly generated).
-   - Provide the exact `decrypt` command the recipient will need to decrypt the file.
+   - Verify the generated `.pubenc` or `.enc` encrypted output file and keystore files (if newly generated).
+   - Provide the exact `decrypt` command (including `-o <original_filename>` when using the anonymous default output name) the recipient will need to decrypt the file.

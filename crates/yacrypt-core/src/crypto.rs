@@ -1,7 +1,9 @@
 /// 加密相关函数模块
 use crate::constants::{
-    KEY_LEN, MAGIC, MAX_ARGON_M_COST_KIB, MAX_ARGON_P_COST, MAX_ARGON_T_COST, MIN_ARGON_M_COST_KIB,
-    PUBENC_FLAG_HAS_SIGNATURE, PUBENC_MAGIC, SALT_LEN, XNONCE_LEN,
+    KEY_LEN, MAGIC, MAGIC_V2, MAX_ARGON_M_COST_KIB, MAX_ARGON_P_COST, MAX_ARGON_T_COST,
+    MIN_ARGON_M_COST_KIB, PADDING_MAX_JITTER_CAP_BYTES, PADDING_MIN_FLOOR_BYTES,
+    PADDING_MIN_JITTER_BYTES, PUBENC_FLAG_HAS_SIGNATURE, PUBENC_MAGIC, PUBENC_V2_INNER_VERSION,
+    PUBENC_V2_MAGIC, SALT_LEN, SGPG_V2_INNER_VERSION, XNONCE_LEN,
 };
 use crate::error::CryptError;
 use argon2::{Argon2, Params};
@@ -10,8 +12,9 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
 };
 use hkdf::Hkdf;
-use sha2::Sha256;
-use zeroize::Zeroize;
+use rand::{rngs::OsRng, Rng, RngCore};
+use sha2::{Digest, Sha256};
+use zeroize::{Zeroize, Zeroizing};
 
 /// 使用 Argon2id 从密码派生密钥
 /// 对参数进行范围验证，防止恶意构造的参数导致 OOM 或 panic
@@ -63,13 +66,14 @@ pub fn derive_key(
 }
 
 /// File format (binary) — updated to include AAD:
-/// MAGIC (6 bytes) "SGPGv1"
+/// MAGIC (6 bytes) "SGPGv1" or "SGPGv2"
 /// ARGON2 params: mem_kib (u32 BE), t_cost (u32 BE), p_cost (u32 BE)
 /// salt_len (u8), salt (salt_len bytes)
 /// nonce_len (u8), nonce (nonce_len bytes)
 /// aad_len (u16 BE), aad (aad_len bytes)
 /// ciphertext_len (u64 BE), ciphertext bytes
-pub fn pack_encrypted_blob(
+fn pack_encrypted_blob_with_magic(
+    magic: &[u8; 6],
     argon_mem_kib: u32,
     argon_t: u32,
     argon_p: u32,
@@ -96,7 +100,7 @@ pub fn pack_encrypted_blob(
         .map_err(|_| CryptError::Format("AAD length exceeds maximum of 65535 bytes".into()))?;
 
     let mut out = Vec::new();
-    out.extend_from_slice(MAGIC);
+    out.extend_from_slice(magic);
     out.extend_from_slice(&argon_mem_kib.to_be_bytes());
     out.extend_from_slice(&argon_t.to_be_bytes());
     out.extend_from_slice(&argon_p.to_be_bytes());
@@ -112,6 +116,49 @@ pub fn pack_encrypted_blob(
     Ok(out)
 }
 
+pub fn pack_encrypted_blob(
+    argon_mem_kib: u32,
+    argon_t: u32,
+    argon_p: u32,
+    salt: &[u8],
+    nonce: &[u8],
+    aad: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, CryptError> {
+    pack_encrypted_blob_with_magic(
+        MAGIC,
+        argon_mem_kib,
+        argon_t,
+        argon_p,
+        salt,
+        nonce,
+        aad,
+        ciphertext,
+    )
+}
+
+/// 打包 SGPGv2 容器（用于带长度混淆填充的纯口令对称加密文件）
+pub fn pack_encrypted_blob_v2(
+    argon_mem_kib: u32,
+    argon_t: u32,
+    argon_p: u32,
+    salt: &[u8],
+    nonce: &[u8],
+    aad: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, CryptError> {
+    pack_encrypted_blob_with_magic(
+        MAGIC_V2,
+        argon_mem_kib,
+        argon_t,
+        argon_p,
+        salt,
+        nonce,
+        aad,
+        ciphertext,
+    )
+}
+
 /// 解析后的加密 blob 数据
 pub struct EncryptedBlob {
     pub mem_kib: u32,
@@ -123,16 +170,35 @@ pub struct EncryptedBlob {
     pub ciphertext: Vec<u8>,
 }
 
-/// 解析加密的 blob 文件格式
-pub fn unpack_encrypted_blob(data: &[u8]) -> Result<EncryptedBlob, CryptError> {
-    let mut idx = 0usize;
+/// 带版本号的解析后 SGPG blob（v1 或 v2）
+pub struct VersionedEncryptedBlob {
+    pub version: u8,
+    pub blob: EncryptedBlob,
+}
 
-    // 检查 magic
-    let magic_slice =
-        data.get(..MAGIC.len()).ok_or_else(|| CryptError::Format("blob too small".into()))?;
-    if magic_slice != MAGIC {
+/// 解析 SGPGv1 加密的 blob 文件格式（私钥备份与遗留容器使用）
+pub fn unpack_encrypted_blob(data: &[u8]) -> Result<EncryptedBlob, CryptError> {
+    let parsed = unpack_encrypted_blob_any(data)?;
+    if parsed.version != 1 {
         return Err(CryptError::Format("bad magic - invalid file format".into()));
     }
+    Ok(parsed.blob)
+}
+
+/// 解析 SGPGv1 或 SGPGv2 加密 blob 文件格式
+pub fn unpack_encrypted_blob_any(data: &[u8]) -> Result<VersionedEncryptedBlob, CryptError> {
+    let mut idx = 0usize;
+
+    // 检查 magic (SGPGv1 或 SGPGv2)
+    let magic_slice =
+        data.get(..MAGIC.len()).ok_or_else(|| CryptError::Format("blob too small".into()))?;
+    let version = if magic_slice == MAGIC {
+        1u8
+    } else if magic_slice == MAGIC_V2 {
+        2u8
+    } else {
+        return Err(CryptError::Format("bad magic - invalid file format".into()));
+    };
     idx += MAGIC.len();
 
     // 读取 Argon2 参数
@@ -238,7 +304,10 @@ pub fn unpack_encrypted_blob(data: &[u8]) -> Result<EncryptedBlob, CryptError> {
         return Err(CryptError::Format("unexpected trailing bytes in encrypted blob".into()));
     }
 
-    Ok(EncryptedBlob { mem_kib, t_cost, p_cost, salt, nonce, aad, ciphertext: ct })
+    Ok(VersionedEncryptedBlob {
+        version,
+        blob: EncryptedBlob { mem_kib, t_cost, p_cost, salt, nonce, aad, ciphertext: ct },
+    })
 }
 
 /// 使用 XChaCha20-Poly1305 加密数据
@@ -456,6 +525,339 @@ pub fn unpack_pubenc_blob(data: &[u8]) -> Result<UnpackedPubenc, CryptError> {
     }
 
     Ok(UnpackedPubenc { ephemeral_pub, nonce, aad, ciphertext, signature })
+}
+
+// ── 长度混淆填充与 SCFv2（加密内嵌签名 + 随机 Padmé 填充） ────────────────────────
+
+/// PURBs Padmé 长度对齐函数：将长度向上舍入，仅保留 O(log log N) 位尺寸信息
+pub fn padme_len(len: usize) -> Result<usize, CryptError> {
+    if len <= 1 {
+        return Ok(len);
+    }
+    let e = (usize::BITS - 1) - len.leading_zeros();
+    let s = if e == 0 { 0 } else { ((u32::BITS - 1) - e.leading_zeros()) + 1 };
+    if e <= s {
+        return Ok(len);
+    }
+    let last_bits = e - s;
+    let bit_mask = (1usize << last_bits) - 1;
+    len.checked_add(bit_mask)
+        .map(|v| v & !bit_mask)
+        .ok_or_else(|| CryptError::Format("padded payload length overflow".into()))
+}
+
+/// 为核心内层载荷计算隐藏精确字节数后的总封装长度：
+/// `max(core_len, PADDING_MIN_FLOOR_BYTES) + random_jitter` 再按 Padmé 向上对齐
+pub fn compute_padded_target_len(core_len: usize) -> Result<usize, CryptError> {
+    let base = core_len.max(PADDING_MIN_FLOOR_BYTES);
+    let jitter_max = (base / 8).clamp(PADDING_MIN_FLOOR_BYTES, PADDING_MAX_JITTER_CAP_BYTES);
+    let jitter = OsRng.gen_range(PADDING_MIN_JITTER_BYTES..=jitter_max);
+    let pre_padme = base
+        .checked_add(jitter)
+        .ok_or_else(|| CryptError::Format("padded payload length overflow".into()))?;
+    padme_len(pre_padme)
+}
+
+/// 打包 SGPGv2 内层明文封装（版本号 1B + 原始明文长度 u64 BE 8B + 明文 + 随机填充）
+pub fn pad_sgpg_v2_plaintext(plaintext: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptError> {
+    let header_len = 1usize + 8usize;
+    let core_len = header_len
+        .checked_add(plaintext.len())
+        .ok_or_else(|| CryptError::Format("plaintext length overflow".into()))?;
+    let target_len = compute_padded_target_len(core_len)?;
+
+    let mut out = Zeroizing::new(vec![0u8; target_len]);
+    out[0] = SGPG_V2_INNER_VERSION;
+    out[1..9].copy_from_slice(&(plaintext.len() as u64).to_be_bytes());
+    out[9..9 + plaintext.len()].copy_from_slice(plaintext);
+    OsRng.fill_bytes(&mut out[core_len..]);
+    Ok(out)
+}
+
+/// 解包 SGPGv2 内层明文封装（须在 Poly1305 AEAD 认证解密后调用）
+pub fn unpad_sgpg_v2_plaintext(inner: &[u8]) -> Result<&[u8], CryptError> {
+    if inner.len() < 9 {
+        return Err(CryptError::Format("Invalid SGPGv2 padded payload: truncated header".into()));
+    }
+    if inner[0] != SGPG_V2_INNER_VERSION {
+        return Err(CryptError::Format(format!(
+            "Unsupported SGPGv2 inner payload version: 0x{:02x}",
+            inner[0]
+        )));
+    }
+    let pt_len_u64 = u64::from_be_bytes([
+        inner[1], inner[2], inner[3], inner[4], inner[5], inner[6], inner[7], inner[8],
+    ]);
+    let pt_len = usize::try_from(pt_len_u64)
+        .map_err(|_| CryptError::Format("SGPGv2 plaintext length overflow".into()))?;
+    let body_end = 9usize
+        .checked_add(pt_len)
+        .ok_or_else(|| CryptError::Format("SGPGv2 plaintext bounds overflow".into()))?;
+    if body_end > inner.len() {
+        return Err(CryptError::Format(
+            "Invalid SGPGv2 padded payload: plaintext length exceeds container".into(),
+        ));
+    }
+    Ok(&inner[9..body_end])
+}
+
+/// 解析后的 SCFv2 文件外层数据（不含明文签名/签名者公钥）
+pub struct UnpackedPubencV2 {
+    pub ephemeral_pub: [u8; 32],
+    pub nonce: [u8; 24],
+    pub aad: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+}
+
+/// 为 SCFv2 派生与临时公钥和接收者公钥绑定的对称 AEAD 密钥
+pub fn derive_pubenc_v2_symmetric_key(
+    shared_secret: &[u8; 32],
+    ephemeral_pub: &[u8; 32],
+    recipient_pub: &[u8; 32],
+) -> [u8; KEY_LEN] {
+    let mut info = Vec::with_capacity(b"yacrypt-file-encryption-v2:".len() + 32);
+    info.extend_from_slice(b"yacrypt-file-encryption-v2:");
+    info.extend_from_slice(recipient_pub);
+    let key = derive_symmetric_key_from_shared_secret(shared_secret, ephemeral_pub, &info);
+    info.zeroize();
+    key
+}
+
+/// 构建 SCFv2 内层 Ed25519 签名转录本：
+/// `b"yacrypt-scfv2-sig:" (18B) || ephemeral_pub (32B) || recipient_pub (32B) || SHA256(plaintext) (32B)`
+/// 绑定临时公钥与目标接收者公钥，防止接收者或攻击者跨文件/跨接收者移植签名，且避免对大明文做双份拷贝。
+pub fn build_pubenc_v2_sig_transcript(
+    ephemeral_pub: &[u8; 32],
+    recipient_pub: &[u8; 32],
+    plaintext: &[u8],
+) -> Zeroizing<[u8; 114]> {
+    let digest = Sha256::digest(plaintext);
+    let mut out = Zeroizing::new([0u8; 114]);
+    out[..18].copy_from_slice(b"yacrypt-scfv2-sig:");
+    out[18..50].copy_from_slice(ephemeral_pub);
+    out[50..82].copy_from_slice(recipient_pub);
+    out[82..114].copy_from_slice(&digest);
+    out
+}
+
+/// 打包 SCFv2 内层密文载荷：
+/// `inner_version(1B=0x02) + sig_flag(1B) + [vk(32B)+sig(64B) if sig_flag==1] + plaintext_len(8B) + plaintext + random_padding`
+pub fn pack_pubenc_v2_inner_payload(
+    plaintext: &[u8],
+    signature: Option<&PubencSignature>,
+) -> Result<Zeroizing<Vec<u8>>, CryptError> {
+    let sig_bytes_len = if signature.is_some() { 32 + 64 } else { 0 };
+    let header_len = 1usize + 1usize + sig_bytes_len + 8usize;
+    let core_len = header_len
+        .checked_add(plaintext.len())
+        .ok_or_else(|| CryptError::Format("plaintext length overflow".into()))?;
+    let target_len = compute_padded_target_len(core_len)?;
+
+    let mut out = Zeroizing::new(vec![0u8; target_len]);
+    let mut idx = 0usize;
+    out[idx] = PUBENC_V2_INNER_VERSION;
+    idx += 1;
+
+    if let Some(sig) = signature {
+        out[idx] = PUBENC_FLAG_HAS_SIGNATURE;
+        idx += 1;
+        out[idx..idx + 32].copy_from_slice(&sig.verifying_key);
+        idx += 32;
+        out[idx..idx + 64].copy_from_slice(&sig.signature);
+        idx += 64;
+    } else {
+        out[idx] = 0x00;
+        idx += 1;
+    }
+
+    out[idx..idx + 8].copy_from_slice(&(plaintext.len() as u64).to_be_bytes());
+    idx += 8;
+    out[idx..idx + plaintext.len()].copy_from_slice(plaintext);
+    idx += plaintext.len();
+    OsRng.fill_bytes(&mut out[idx..]);
+    Ok(out)
+}
+
+/// 解包 SCFv2 内层载荷（须在 XChaCha20-Poly1305 认证解密后调用）
+pub fn unpack_pubenc_v2_inner_payload(
+    inner: &[u8],
+) -> Result<(&[u8], Option<PubencSignature>), CryptError> {
+    if inner.len() < 2 {
+        return Err(CryptError::Format("Invalid SCFv2 inner payload: truncated header".into()));
+    }
+    if inner[0] != PUBENC_V2_INNER_VERSION {
+        return Err(CryptError::Format(format!(
+            "Unsupported SCFv2 inner payload version: 0x{:02x}",
+            inner[0]
+        )));
+    }
+    let sig_flag = inner[1];
+    let mut idx = 2usize;
+    let signature = match sig_flag {
+        0x00 => None,
+        PUBENC_FLAG_HAS_SIGNATURE => {
+            let sig_end = idx + 32 + 64;
+            if inner.len() < sig_end {
+                return Err(CryptError::Format(
+                    "Invalid SCFv2 inner payload: missing signature block".into(),
+                ));
+            }
+            let mut vk = [0u8; 32];
+            vk.copy_from_slice(&inner[idx..idx + 32]);
+            let mut sig = [0u8; 64];
+            sig.copy_from_slice(&inner[idx + 32..sig_end]);
+            idx = sig_end;
+            Some(PubencSignature { verifying_key: vk, signature: sig })
+        }
+        other => {
+            return Err(CryptError::Format(format!(
+                "Invalid SCFv2 inner signature flag: 0x{:02x}",
+                other
+            )));
+        }
+    };
+
+    if inner.len() < idx + 8 {
+        return Err(CryptError::Format(
+            "Invalid SCFv2 inner payload: missing plaintext length".into(),
+        ));
+    }
+    let pt_len_u64 = u64::from_be_bytes([
+        inner[idx],
+        inner[idx + 1],
+        inner[idx + 2],
+        inner[idx + 3],
+        inner[idx + 4],
+        inner[idx + 5],
+        inner[idx + 6],
+        inner[idx + 7],
+    ]);
+    idx += 8;
+    let pt_len = usize::try_from(pt_len_u64)
+        .map_err(|_| CryptError::Format("SCFv2 plaintext length overflow".into()))?;
+    let pt_end = idx
+        .checked_add(pt_len)
+        .ok_or_else(|| CryptError::Format("SCFv2 plaintext bounds overflow".into()))?;
+    if pt_end > inner.len() {
+        return Err(CryptError::Format(
+            "Invalid SCFv2 inner payload: plaintext length exceeds container".into(),
+        ));
+    }
+    Ok((&inner[idx..pt_end], signature))
+}
+
+/// 打包 SCFv2 外层容器（flags 恒为 0x00，绝不在外层暴露签名存在性、签名者公钥或未填充大小）
+/// 格式: MAGIC("SCFv2",5) + flags(1, 0x00) + ephemeral_pub(32) + nonce(24) + aad_len(2) + aad + ct_len(8) + ct
+pub fn pack_pubenc_v2_blob(
+    ephemeral_pub: &[u8; 32],
+    nonce: &[u8; 24],
+    aad: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, CryptError> {
+    let aad_len = u16::try_from(aad.len())
+        .map_err(|_| CryptError::Format("AAD length exceeds maximum of 65535 bytes".into()))?;
+
+    let mut out = Vec::new();
+    out.extend_from_slice(PUBENC_V2_MAGIC);
+    out.push(0x00);
+    out.extend_from_slice(ephemeral_pub);
+    out.extend_from_slice(nonce);
+    out.extend_from_slice(&aad_len.to_be_bytes());
+    out.extend_from_slice(aad);
+    out.extend_from_slice(&(ciphertext.len() as u64).to_be_bytes());
+    out.extend_from_slice(ciphertext);
+    Ok(out)
+}
+
+/// 解析 SCFv2 外层容器
+pub fn unpack_pubenc_v2_blob(data: &[u8]) -> Result<UnpackedPubencV2, CryptError> {
+    let mut idx = 0usize;
+
+    let magic_slice = data
+        .get(..PUBENC_V2_MAGIC.len())
+        .ok_or_else(|| CryptError::Format("pubenc blob too small".into()))?;
+    if magic_slice != PUBENC_V2_MAGIC {
+        return Err(CryptError::Format("bad magic — not a valid SCFv2 pubenc file".into()));
+    }
+    idx += PUBENC_V2_MAGIC.len();
+
+    let flags = *data.get(idx).ok_or_else(|| CryptError::Format("missing flags byte".into()))?;
+    idx += 1;
+    if flags != 0x00 {
+        return Err(CryptError::Format(format!("unsupported SCFv2 flags: 0x{:02x}", flags)));
+    }
+
+    let eph_end = idx
+        .checked_add(32)
+        .ok_or_else(|| CryptError::Format("ephemeral key offset overflow".into()))?;
+    let eph_slice = data
+        .get(idx..eph_end)
+        .ok_or_else(|| CryptError::Format("missing ephemeral public key".into()))?;
+    let mut ephemeral_pub = [0u8; 32];
+    ephemeral_pub.copy_from_slice(eph_slice);
+    idx = eph_end;
+
+    let nonce_end =
+        idx.checked_add(24).ok_or_else(|| CryptError::Format("nonce offset overflow".into()))?;
+    let nonce_slice =
+        data.get(idx..nonce_end).ok_or_else(|| CryptError::Format("missing nonce".into()))?;
+    let mut nonce = [0u8; 24];
+    nonce.copy_from_slice(nonce_slice);
+    idx = nonce_end;
+
+    let aad_len_end = idx
+        .checked_add(2)
+        .ok_or_else(|| CryptError::Format("AAD length offset overflow".into()))?;
+    let aad_len_bytes = data
+        .get(idx..aad_len_end)
+        .ok_or_else(|| CryptError::Format("missing AAD length".into()))?;
+    let aad_len = u16::from_be_bytes([aad_len_bytes[0], aad_len_bytes[1]]) as usize;
+    idx = aad_len_end;
+    let aad_end =
+        idx.checked_add(aad_len).ok_or_else(|| CryptError::Format("AAD length overflow".into()))?;
+    let aad = data
+        .get(idx..aad_end)
+        .ok_or_else(|| CryptError::Format("missing AAD bytes".into()))?
+        .to_vec();
+    idx = aad_end;
+
+    let ct_len_end = idx
+        .checked_add(8)
+        .ok_or_else(|| CryptError::Format("ciphertext length offset overflow".into()))?;
+    let ct_len_bytes = data
+        .get(idx..ct_len_end)
+        .ok_or_else(|| CryptError::Format("missing ciphertext length".into()))?;
+    let ct_len_u64 = u64::from_be_bytes([
+        ct_len_bytes[0],
+        ct_len_bytes[1],
+        ct_len_bytes[2],
+        ct_len_bytes[3],
+        ct_len_bytes[4],
+        ct_len_bytes[5],
+        ct_len_bytes[6],
+        ct_len_bytes[7],
+    ]);
+    if ct_len_u64 < 16 {
+        return Err(CryptError::Format("ciphertext shorter than 16-byte Poly1305 tag".into()));
+    }
+    let ct_len = usize::try_from(ct_len_u64)
+        .map_err(|_| CryptError::Format("ciphertext length overflow".into()))?;
+    idx = ct_len_end;
+
+    let ct_end = idx
+        .checked_add(ct_len)
+        .ok_or_else(|| CryptError::Format("ciphertext length overflow".into()))?;
+    let ciphertext = data
+        .get(idx..ct_end)
+        .ok_or_else(|| CryptError::Format("missing ciphertext bytes".into()))?
+        .to_vec();
+    idx = ct_end;
+
+    if idx != data.len() {
+        return Err(CryptError::Format("unexpected trailing bytes in pubenc blob".into()));
+    }
+
+    Ok(UnpackedPubencV2 { ephemeral_pub, nonce, aad, ciphertext })
 }
 
 #[cfg(test)]
@@ -791,5 +1193,110 @@ mod tests {
         );
         let dec = decrypt_with_aad(&sym2, &p.nonce, &p.ciphertext, &p.aad).unwrap();
         assert_eq!(dec, pt.to_vec());
+    }
+
+    #[test]
+    fn padme_len_monotonic_and_bounded() {
+        assert_eq!(padme_len(0).unwrap(), 0);
+        assert_eq!(padme_len(1).unwrap(), 1);
+        assert_eq!(padme_len(8).unwrap(), 8);
+        assert_eq!(padme_len(9).unwrap(), 10);
+        assert_eq!(padme_len(1024).unwrap(), 1024);
+        assert_eq!(padme_len(1088).unwrap(), 1088);
+        assert_eq!(padme_len(1089).unwrap(), 1152);
+        for n in [0usize, 1, 7, 9, 100, 1023, 1024, 1025, 65537, 1_048_577] {
+            let p = padme_len(n).unwrap();
+            assert!(p >= n, "padme_len({}) = {} < {}", n, p, n);
+            if n > 0 {
+                // Overhead bounded (< 12.5% for Padmé)
+                assert!(p <= n + (n / 8).max(8));
+            }
+        }
+    }
+
+    #[test]
+    fn sgpg_v2_padding_roundtrip_and_bounds() {
+        for pt in [b"".as_slice(), b"a", b"hello secret payload", &vec![0x5Au8; 5000]] {
+            let padded = pad_sgpg_v2_plaintext(pt).unwrap();
+            assert!(padded.len() >= PADDING_MIN_FLOOR_BYTES + PADDING_MIN_JITTER_BYTES);
+            assert!(padded.len() >= 9 + pt.len() + PADDING_MIN_JITTER_BYTES);
+            let recovered = unpad_sgpg_v2_plaintext(&padded).unwrap();
+            assert_eq!(recovered, pt);
+        }
+
+        // Exact lengths vary randomly across repeated calls for the same plaintext
+        let same = b"exact length test";
+        let lens: std::collections::HashSet<usize> =
+            (0..24).map(|_| pad_sgpg_v2_plaintext(same).unwrap().len()).collect();
+        assert!(lens.len() > 1, "expected randomized padded lengths, got {:?}", lens);
+
+        // Reject truncated / bad version / out-of-bounds plaintext_len
+        assert!(unpad_sgpg_v2_plaintext(&[]).is_err());
+        assert!(unpad_sgpg_v2_plaintext(&[0x01; 16]).is_err());
+        let mut oob = vec![SGPG_V2_INNER_VERSION, 0, 0, 0, 0, 0, 0, 0, 100];
+        oob.extend_from_slice(&[0u8; 10]);
+        assert!(unpad_sgpg_v2_plaintext(&oob).is_err());
+    }
+
+    #[test]
+    fn sgpg_v2_pack_and_unpack_version_dispatch() {
+        let salt = [0x11u8; SALT_LEN];
+        let nonce = [0x22u8; XNONCE_LEN];
+        let aad = b"type=file|v=2";
+        let pt = pad_sgpg_v2_plaintext(b"symmetric v2 content").unwrap();
+        let key = derive_key("test-password-1234", &salt, 256, 1, 1).unwrap();
+        let ct = encrypt_with_aad(&key, &nonce, &pt, aad).unwrap();
+        let blob = pack_encrypted_blob_v2(256, 1, 1, &salt, &nonce, aad, &ct).unwrap();
+
+        // Keystore v1-only parser MUST reject SGPGv2
+        assert!(unpack_encrypted_blob(&blob).is_err());
+
+        // Version-aware parser accepts SGPGv2 and preserves roundtrip
+        let parsed = unpack_encrypted_blob_any(&blob).unwrap();
+        assert_eq!(parsed.version, 2);
+        let dec =
+            decrypt_with_aad(&key, &parsed.blob.nonce, &parsed.blob.ciphertext, &parsed.blob.aad)
+                .unwrap();
+        assert_eq!(unpad_sgpg_v2_plaintext(&dec).unwrap(), b"symmetric v2 content");
+    }
+
+    #[test]
+    fn scfv2_inner_payload_and_outer_blob_roundtrip() {
+        let sig = PubencSignature { verifying_key: [0x33u8; 32], signature: [0x44u8; 64] };
+        let inner_signed = pack_pubenc_v2_inner_payload(b"signed doc", Some(&sig)).unwrap();
+        assert!(inner_signed.len() >= PADDING_MIN_FLOOR_BYTES + PADDING_MIN_JITTER_BYTES);
+        let (pt, got_sig) = unpack_pubenc_v2_inner_payload(&inner_signed).unwrap();
+        assert_eq!(pt, b"signed doc");
+        let got_sig = got_sig.unwrap();
+        assert_eq!(got_sig.verifying_key, sig.verifying_key);
+        assert_eq!(got_sig.signature, sig.signature);
+
+        let inner_unsigned = pack_pubenc_v2_inner_payload(b"", None).unwrap();
+        let (pt2, got_sig2) = unpack_pubenc_v2_inner_payload(&inner_unsigned).unwrap();
+        assert_eq!(pt2, b"");
+        assert!(got_sig2.is_none());
+
+        // Outer SCFv2 rejects non-zero flags and <16B ciphertext
+        let eph = [0xAAu8; 32];
+        let nonce = [0xBBu8; 24];
+        let ct = vec![0xCCu8; 32];
+        let mut outer = pack_pubenc_v2_blob(&eph, &nonce, b"v=2|ephemeral_pub=00", &ct).unwrap();
+        assert_eq!(&outer[..5], PUBENC_V2_MAGIC);
+        assert_eq!(outer[5], 0x00);
+        let parsed = unpack_pubenc_v2_blob(&outer).unwrap();
+        assert_eq!(parsed.ephemeral_pub, eph);
+        assert_eq!(parsed.ciphertext, ct);
+
+        outer[5] = 0x01;
+        assert!(unpack_pubenc_v2_blob(&outer).is_err());
+
+        // Transcript separates different ephemeral_pub, recipient_pub, and plaintext
+        let t1 = build_pubenc_v2_sig_transcript(&[1u8; 32], &[2u8; 32], b"abc");
+        let t2 = build_pubenc_v2_sig_transcript(&[1u8; 32], &[3u8; 32], b"abc");
+        let t3 = build_pubenc_v2_sig_transcript(&[4u8; 32], &[2u8; 32], b"abc");
+        let t4 = build_pubenc_v2_sig_transcript(&[1u8; 32], &[2u8; 32], b"abd");
+        assert_ne!(t1.as_slice(), t2.as_slice());
+        assert_ne!(t1.as_slice(), t3.as_slice());
+        assert_ne!(t1.as_slice(), t4.as_slice());
     }
 }
