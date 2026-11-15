@@ -190,8 +190,12 @@ fn cli_rejects_low_order_x25519_public_key_l1() {
     assert!(!res.status.success());
     let stderr = String::from_utf8_lossy(&res.stderr);
     assert!(stderr.contains("low-order point") || stderr.contains("non-contributory"));
-    // Human-readable Display error formatting (no Rust Debug struct dump)
-    assert!(stderr.starts_with("Error: "), "stderr should use Display prefix: {}", stderr);
+    // Human-readable Display error formatting (no Rust Debug struct dump; allow preceding mlockall warning on Linux)
+    assert!(
+        stderr.lines().any(|line| line.starts_with("Error: ")),
+        "stderr should use Display prefix: {}",
+        stderr
+    );
     assert!(!out_path.exists());
 
     let _ = fs::remove_dir_all(&dir);
@@ -1459,12 +1463,14 @@ fn cli_interactive_select_picker_security_bypasses_fifo_and_completions() {
     assert!(zsh_comp.status.success());
     let zsh_src = String::from_utf8_lossy(&zsh_comp.stdout);
     assert!(zsh_src.contains("--keystore-dir=[") && zsh_src.contains("pwsh"));
-    fs::write(dir.join("comp.zsh"), zsh_comp.stdout).unwrap();
-    assert!(Command::new("/bin/zsh")
-        .args(["-n", dir.join("comp.zsh").to_str().unwrap()])
-        .status()
-        .unwrap()
-        .success());
+    if let Some(zsh_bin) = ["/bin/zsh", "/usr/bin/zsh"].iter().find(|p| Path::new(p).exists()) {
+        fs::write(dir.join("comp.zsh"), zsh_comp.stdout).unwrap();
+        assert!(Command::new(zsh_bin)
+            .args(["-n", dir.join("comp.zsh").to_str().unwrap()])
+            .status()
+            .unwrap()
+            .success());
+    }
 
     let fish_comp = isolated_cmd(&dir).args(["completions", "fish"]).output().unwrap();
     assert!(fish_comp.status.success());
