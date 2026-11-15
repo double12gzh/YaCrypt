@@ -451,6 +451,7 @@ fn display_file_name_only(path: &Path, fallback: &str) -> String {
     path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| fallback.into())
 }
 
+// SECURITY INVARIANT (YC-010): Never emit companion .decrypt.txt plaintext hints by default.
 /// 使用已有公钥（及可选的已解密签名私钥）执行文件加密（默认不写入伴生 `.decrypt.txt`）
 pub fn encrypt_workflow_with_existing_key(
     input: &Path,

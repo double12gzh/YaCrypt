@@ -71,6 +71,14 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
 4. **Argon2 参数硬上限校验**：从外部密文解析 Argon2 参数（内存成本 `m_cost`、迭代次数 `t_cost`、并行度 `p_cost`）时，必须在派生前严格校验硬上限，防止恶意构造的密文头触发 OOM 拒绝服务。
 5. **AAD 最小暴露绑定与域分离**：AAD 仅绑定解密必需的安全关键字段（如 `fp`、`type`、`v`、`ephemeral_pub`，以及遗留 `SCFv1` 的 `flags`/`sig_vk`），这些字段的篡改或跨类型混用（如拿私钥备份当普通对称文件解密）必须导致失败；`SCFv2` 严禁在明文外层 AAD 暴露 `sig_vk` 或签名标志位；**严禁**将低熵个人信息（姓名、邮箱、文件名等）或其明文哈希写入 AAD——低熵摘要可被字典还原（2026-10-18 复审 M-3 收口）。
 6. **防 Swap 内存锁定**：在 Linux 环境下保持启动时调用 `try_mlockall()`，尝试锁定当前内存页；失败会告警，不能据此承诺全部敏感内存永不交换。
+7. **默认最高保密与元信息防泄密（Privacy-by-Default，绝对不可静默降级）**：
+   - **默认加密容器**：非对称加密默认且仅生成 `SCFv2`（Sign-then-Encrypt，Ed25519 签名与签名者公钥移入 AEAD 内层，外层 `flags` 恒为 `0x00`），纯口令对称加密默认且仅生成 `SGPGv2`；已淘汰以 `SCFv1` 或未填充 `SGPGv1` 写入新业务文件，旧格式仅保留兼容解密与 `inspect`。
+   - **长度混淆填充**：`SCFv2` / `SGPGv2` 默认启用 Padmé + 随机抖动填充（`PADDING_MIN_FLOOR_BYTES = 1024`、`PADDING_MIN_JITTER_BYTES = 64`、`PADDING_MAX_JITTER_CAP_BYTES = 4 * 1024 * 1024`），掩盖原文件精确字节数（尤其是小文件与 tar 包特征）。严禁调小这些下限/上限或关闭默认填充。
+   - **匿名输出文件名**：未显式指定 `--output` 时，默认生成同目录随机 16 位十六进制匿名文件名（`<16hex>.pubenc` / `<16hex>.enc`），**严禁**恢复 `<原文件名>.pubenc` / `<原文件名>.enc` 默认命名。
+   - **默认不写伴生明文指引**：CLI（需显式 `--instructions` 才写出）与 TUI（`enc_no_instructions = true`）默认跳过 `.decrypt.txt`，避免残留原文件、密钥指纹或使用痕迹。
+   - **禁止身份信息入参/入头与弱口令默认**：`gen-keypair` 已永久移除 `name`/`email` 参数（防 Shell 历史与密文关联）；CLI 与 TUI 新建密钥备份默认自动生成高熵随机口令。
+   - **默认强制验签**：CLI 与 TUI 对 `.pubenc` 解密默认强制验证 Ed25519 签名（CLI 仅在显式传入 `--allow-unsigned` 时豁免）。
+8. **受保护安全测试与降级阻断条款**：[tests/security_invariants.rs](tests/security_invariants.rs) 为受保护红线测试，任何 Agent **严禁擅自删改或放宽其断言**。若用户需求以“方便/UX”为由要求放宽第 1~7 条任意默认约束，Agent **必须先停止改动、向用户明确指出保密降级与泄密风险并请求显式确认**。
 
 ### 1.6 CLI 子命令入口对照表
 
@@ -83,8 +91,8 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
 | `key-export` (别名 `export-key`) | `cli::cmd_key_export` | 导出附带 Ed25519 自签名绑定的 Ed25519 + X25519 合并公钥包 |
 | `key-import` (别名 `import-key`) | `cli::cmd_key_import` | 验证自签名与 L-1 低阶点并导入对端合并公钥包（可选 `--label`） |
 | `change-key-password` | `cli::cmd_change_key_password` | 同步轮换本地 Ed25519 + X25519 加密私钥备份的口令 |
-| `encrypt` | `cli::cmd_encrypt_workflow` | 加密流程：默认生成密钥对并签名加密（输出 `<input>.pubenc`，可选 `--label` / `--no-instructions`）；`--key` 复用公钥/别名；`-c / --symmetric` 纯口令对称加密（输出 `<input>.enc`） |
-| `decrypt` | `cli::cmd_decrypt_workflow` | 解密流程：支持 `.pubenc`（验签 + 解密，支持别名/指纹前缀选钥）与 `.enc`（自动识别 `SGPGv1`/`SGPGv2` `type=file` 或 `-c` 纯口令解密） |
+| `encrypt` | `cli::cmd_encrypt_workflow` | 加密流程：默认生成密钥对并签名加密（`SCFv2`，输出 `<16hex>.pubenc`，可选 `--label` / `--instructions`）；`--key` 复用公钥/别名；`-c / --symmetric` 纯口令对称加密（`SGPGv2`，输出 `<16hex>.enc`） |
+| `decrypt` | `cli::cmd_decrypt_workflow` | 解密流程：支持 `.pubenc`（默认强制验签 + 解密，支持别名/指纹前缀选钥，可选 `--allow-unsigned`）与 `.enc`（自动识别 `SGPGv1`/`SGPGv2` `type=file` 或 `-c` 纯口令解密） |
 | `gen-keypair` | `cli::cmd_generate_protected_key` | 生成受口令保护的 Ed25519 + X25519 密钥对（可选 `--label`） |
 | `gen-password` | `cli::cmd_generate_strong_password` | 基于拒绝采样生成无模偏差的高强度随机口令 |
 | `encrypt-file-with-key` | `cli::cmd_encrypt_file_with_key_cli` | 使用已有的 X25519 公钥/别名直接加密文件（可选 `--sign-key`） |

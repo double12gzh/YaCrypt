@@ -174,6 +174,7 @@ pub fn preflight_check_output_path(
     Ok(())
 }
 
+// SECURITY INVARIANT (YC-010): Default ciphertext filenames MUST stay random/anonymous; never derive from input filename.
 /// 生成脱敏随机输出路径（`<16位小写hex>.<ext>`），放置在原文件同目录下，避免通过默认密文名泄露原文件名或扩展名
 fn random_anonymous_output_path(input: &Path, ext: &str) -> PathBuf {
     let mut rnd = [0u8; 8];

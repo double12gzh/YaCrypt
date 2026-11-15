@@ -1085,6 +1085,7 @@ pub fn cmd_decrypt_workflow(
         Zeroizing::new(Password::new().with_prompt("Enter private key password").interact()?);
 
     println!("🔓 Step 2/2: Decrypting and verifying file...");
+    // SECURITY INVARIANT (YC-010): .pubenc decryption MUST verify Ed25519 signature by default unless --allow-unsigned is passed.
     let effective_require_sig = !allow_unsigned;
     let outcome = decrypt_workflow_with_password_in_dir(
         keystore_dir,

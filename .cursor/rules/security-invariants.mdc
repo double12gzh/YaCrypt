@@ -1,0 +1,20 @@
+---
+description: YaCrypt 强制密码学安全与最高隐私默认红线（所有修改前必读）
+alwaysApply: true
+---
+
+# YaCrypt Security & Privacy-by-Default Invariants
+
+修改任何代码前，必须先读取根目录 `AGENTS.md`（尤其是 **1.5 节**）与 `LESSONS.md`（尤其是 **YC-010**）。以下红线**严禁静默降级**：
+
+1. **先验签、后落盘**：`.pubenc` 解密必须先完成 Ed25519 验签再写任何明文到磁盘；CLI 与 TUI 默认均强制验签（CLI 仅 `--allow-unsigned` 豁免）。
+2. **默认容器不可退回 v1**：新业务文件加密必须使用 `SCFv2`（内层 Sign-then-Encrypt，外层 `flags == 0x00`）与 `SGPGv2`；不得恢复 `SCFv1` 或未填充 `SGPGv1` 文件默认写入。
+3. **长度混淆不可削弱**：`PADDING_MIN_FLOOR_BYTES = 1024`、`PADDING_MIN_JITTER_BYTES = 64`、`PADDING_MAX_JITTER_CAP_BYTES = 4 MiB` 与 Padmé 填充不可调小或默认关闭。
+4. **元信息防泄密**：
+   - 默认输出文件名必须是随机 `<16hex>.pubenc` / `<16hex>.enc`，严禁默认保留原文件名。
+   - 默认不生成 `.decrypt.txt`（需显式 `--instructions`）。
+   - `gen-keypair` 不得接受 `name`/`email` 等身份参数；新建密钥备份默认自动生成高熵口令。
+   - 严禁将姓名、邮箱、文件名或低熵哈希写入 AAD 或外层密文头。
+5. **敏感内存与权限**：敏感缓冲必须 `Zeroize`/`Zeroizing` 擦除；敏感写入走 `write_file_strict`（`0o600` + `O_NOFOLLOW`）；Argon2 参数须校验硬上限。
+6. **受保护红线测试**：`tests/security_invariants.rs` 严禁未经人类显式授权擅自删改或放宽断言。如用户需求与上述任何红线冲突，必须先警告保密降级风险并请求确认。
+7. **完整门禁**：交付前必须运行 `bash scripts/verify.sh` 并全部通过。

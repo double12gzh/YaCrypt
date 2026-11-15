@@ -14,6 +14,7 @@ pub const PUBENC_V2_MAGIC: &[u8; 5] = b"SCFv2"; // pubenc v2 file magic (encrypt
 pub const PUBENC_FLAG_HAS_SIGNATURE: u8 = 0x01;
 pub const PUBENC_V2_INNER_VERSION: u8 = 0x02;
 pub const SGPG_V2_INNER_VERSION: u8 = 0x02;
+// SECURITY INVARIANT (YC-010): Do NOT shrink padding bounds or revert default encryption to SCFv1/SGPGv1.
 pub const PADDING_MIN_FLOOR_BYTES: usize = 1024;
 pub const PADDING_MIN_JITTER_BYTES: usize = 64;
 pub const PADDING_MAX_JITTER_CAP_BYTES: usize = 4 * 1024 * 1024;

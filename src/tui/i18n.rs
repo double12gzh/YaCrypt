@@ -154,7 +154,7 @@ pub fn help_guide_lines(lang: UiLang, keystore_dir: &Path) -> Vec<Line<'static>>
                 "     • 跨电脑解密：需同时携带 [.pubenc 密文 + 对应 x25519_private 私钥 + 口令]。",
             ),
             Line::from(""),
-            Line::from(Span::styled("  3. <原文件>.enc  (SGPGv2 纯口令对称·长度混淆加密容器)", key_style)),
+            Line::from(Span::styled("  3. <随机名>.enc  (SGPGv2 纯口令对称·长度混淆加密容器)", key_style)),
             Line::from("     • 含义与用途：不依赖公私钥体系，Argon2id+AEAD 加密并隐藏原文件精确字节数（兼容 SGPGv1）。"),
             Line::from(Span::styled(
                 "     • 保密要求：✅ 已强加密，最适合跨多台电脑“只带一个文件凭密码解密”。",
@@ -232,7 +232,7 @@ pub fn help_guide_lines(lang: UiLang, keystore_dir: &Path) -> Vec<Line<'static>>
                 "     • Cross-Machine: Needs [.pubenc + matching x25519_private_*.asc.enc + password].",
             ),
             Line::from(""),
-            Line::from(Span::styled("  3. <file>.enc  (SGPGv2 Symmetric Password-Only · Padded Container)", key_style)),
+            Line::from(Span::styled("  3. <random>.enc  (SGPGv2 Symmetric Password-Only · Padded Container)", key_style)),
             Line::from("     • Meaning / Purpose: Portable Argon2id+AEAD password encryption with length hiding (reads SGPGv1 too)."),
             Line::from(Span::styled(
                 "     • Secrecy Level: ✅ STRONGLY ENCRYPTED. Single-file portable across any machine.",
