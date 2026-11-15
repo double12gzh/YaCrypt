@@ -2,7 +2,8 @@
 name: encrypt
 description: >-
   Use this skill when the user wants to encrypt a file interactively using YaCrypt,
-  either by generating a new Ed25519/X25519 keypair or reusing an existing X25519 public key.
+  by generating a new Ed25519/X25519 keypair, reusing an existing X25519 public key,
+  or using symmetric password-only (-c / --symmetric) encryption.
 ---
 
 # Interactive File Encryption Workflow (`encrypt`)
@@ -20,9 +21,9 @@ Guide the user through encrypting a file with `yacrypt`:
      ```bash
      cargo run -- encrypt <input_file> [--label <alias>] [-o <output_path>] [--instructions]
      ```
-   - With an existing X25519 public key or local label:
+   - With an existing X25519 public key or local label (values optional on an interactive TTY):
      ```bash
-     cargo run -- encrypt <input_file> --key <pubkey_path_or_label> [--sign-key <sign_key_path_or_label>] [-o <output_path>]
+     cargo run -- encrypt <input_file> --key [<pubkey_path_or_label>] [--sign-key [<sign_key_path_or_label>]] [-o <output_path>] [--instructions]
      ```
    - With symmetric password-only mode:
      ```bash

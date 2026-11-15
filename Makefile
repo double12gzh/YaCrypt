@@ -39,30 +39,30 @@ clean: ## 清理构建产物
 
 # 运行测试
 .PHONY: test
-test: ## 运行测试
+test: ## 运行全工作区测试
 	@echo "运行测试..."
-	cargo test
+	cargo test --workspace --all-features
 	@echo "测试完成"
 
 # 检查代码（不构建）
 .PHONY: check
-check: ## 检查代码（不构建）
+check: ## 检查全工作区代码（不构建）
 	@echo "检查代码..."
-	cargo check
+	cargo check --workspace --all-targets --all-features
 	@echo "检查完成"
 
 # 代码格式化
 .PHONY: fmt
-fmt: ## 格式化代码
+fmt: ## 格式化全工作区代码
 	@echo "格式化代码..."
-	cargo fmt
+	cargo fmt --all
 	@echo "格式化完成"
 
 # 运行 clippy 检查
 .PHONY: clippy
-clippy: ## 运行 clippy 检查
+clippy: ## 运行全工作区 clippy 检查
 	@echo "运行 clippy 检查..."
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
 	@echo "clippy 检查完成"
 
 # 安装到系统路径

@@ -332,7 +332,7 @@ pub fn generate_and_store_keys_in_dir(
         To decrypt a .pubenc file encrypted with this keypair:\n\n\
           yacrypt decrypt <file.pubenc> \\\n\
               --private-key {x25519_enc}\n\n\
-        You will be prompted for the encryption password you set during key generation.\n\n\
+        You will be prompted for the backup password from key generation (auto-generated or user-set).\n\n\
         === Advanced: Decrypt private key only ===\n\n\
         To export the raw private key (DER format):\n\n\
           yacrypt decrypt-private-key {ed_enc} -o private_{fp}.der\n\n\

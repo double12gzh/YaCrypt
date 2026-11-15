@@ -27,10 +27,12 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
   ├── src/tui/              — Ratatui + Crossterm 4 合 1 交互式终端工作台
   │     ├── mod.rs          — Raw Mode 终端守卫、panic 恢复钩子与事件循环
   │     ├── app.rs          — 4 标签页状态机（Keyring / Encrypt / Decrypt & Verify / Password Gen）与口令缓冲即时擦除
-  │     └── ui.rs           — 响应式布局渲染、弹窗组件与 TestBackend 无头渲染测试
+  │     ├── ui.rs           — 响应式布局渲染、弹窗组件与 TestBackend 无头渲染测试
+  │     └── i18n.rs         — 双语本地化、语言偏好持久化与内置文件说明手册
   └── crates/yacrypt-core/  — 纯数据驱动核心密码学库（零终端 I/O、零 println!/dialoguer）
         ├── src/lib.rs      — 公共 API 导出
         ├── src/constants.rs— 算法与协议常量（Argon2id 成本上下限、口令长度边界等）
+        ├── src/error.rs    — 统一密码学与 I/O 错误类型 CryptError
         ├── src/workflow.rs — 高层工作流编排（加解密、新增密钥回滚、免口令密文头透视 inspect_file）
         ├── src/file_ops.rs — X25519 混合公钥加解密 (SCFv1/SCFv2) + 纯口令对称文件加解密 (SGPGv1/SGPGv2) + Ed25519 签名验签
         ├── src/keystore.rs — 密钥对生成、基于口令的私钥加密存储与恢复、本地密钥环扫描 (scan_keystore)
@@ -45,7 +47,7 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
   * **算法**：Argon2id KDF → XChaCha20-Poly1305 AEAD。
   * **用途与域分离（通过 AAD `type` 字段严格隔离）**：
     1. **本地私钥加密备份**（`keystore/*.asc.enc`，维持 `SGPGv1`）：AAD 绑定 `fp=<fingerprint>|type=ed25519` 或 `type=x25519`。
-    2. **纯口令对称文件加密**（`<file>.enc`，通过 `yacrypt encrypt -c` 或 TUI 对称模式触发）：新加密默认采用 `SGPGv2`（AAD `type=file|v=2`），在 AEAD 内层施加随机抖动 + Padmé 长度混淆填充以隐藏原文件精确字节数；解密与 `inspect` 同时兼容遗留 `SGPGv1`（`type=file`），严禁与私钥备份混用。
+    2. **纯口令对称文件加密**（`<16hex>.enc`，通过 `yacrypt encrypt -c` 或 TUI 对称模式触发）：新加密默认采用 `SGPGv2`（AAD `type=file|v=2`），在 AEAD 内层施加随机抖动 + Padmé 长度混淆填充以隐藏原文件精确字节数；解密与 `inspect` 同时兼容遗留 `SGPGv1`（`type=file`），严禁与私钥备份混用。
   * **二进制格式**：`MAGIC("SGPGv1" / "SGPGv2", 6B) + Argon2 params(12B) + salt + nonce + AAD + ciphertext`。
 * **公钥混合加密容器（`SCFv2` / 遗留 `SCFv1` / `.pubenc` blob）**：
   * **算法**：X25519 ECDH（每文件生成临时密钥对）+ HKDF-SHA256 → XChaCha20-Poly1305 AEAD，默认内嵌 Ed25519 签名。
@@ -95,7 +97,7 @@ YaCrypt (Workspace Root — Binary Package `yacrypt`)
 | `decrypt` | `cli::cmd_decrypt_workflow` | 解密流程：支持 `.pubenc`（默认强制验签 + 解密，支持别名/指纹前缀选钥，可选 `--allow-unsigned`）与 `.enc`（自动识别 `SGPGv1`/`SGPGv2` `type=file` 或 `-c` 纯口令解密） |
 | `gen-keypair` | `cli::cmd_generate_protected_key` | 生成受口令保护的 Ed25519 + X25519 密钥对（可选 `--label`） |
 | `gen-password` | `cli::cmd_generate_strong_password` | 基于拒绝采样生成无模偏差的高强度随机口令 |
-| `encrypt-file-with-key` | `cli::cmd_encrypt_file_with_key_cli` | 使用已有的 X25519 公钥/别名直接加密文件（可选 `--sign-key`） |
+| `encrypt-file-with-key` | `cli::cmd_encrypt_file_with_key_cli` | 使用已有的 X25519 公钥/别名直接加密文件（`SCFv2`，输出 `<16hex>.pubenc`，可选 `--sign-key`） |
 | `decrypt-private-key` | `cli::cmd_decrypt_backup` | 解密并导出原始 Ed25519 私钥 PKCS#8 DER 数据（默认 `<stem>.der`） |
 | `completions` | `cli::cmd_completions` | 生成 `bash` / `zsh` / `fish` / `powershell` 自动补全脚本 |
 

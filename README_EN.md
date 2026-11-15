@@ -16,7 +16,7 @@
 
 ## Requirements
 
-- Rust 1.70+ (Edition 2021)
+- Rust 1.88+ (Edition 2021)
 - Linux / macOS
 
 ## Installation
@@ -51,10 +51,10 @@ yacrypt tui
 ```
 
 Includes 4 integrated views and global shortcuts (switch views with `1`-`4` or `Tab` / `Shift+Tab`, press `?` / `F1` to open the built-in File Guide explaining every file's role, audience, secrecy level, and cross-machine usage, press `Shift+L` / `F2` to toggle **English / 中文** live with preference persisted, quit safely and zeroize password buffers with `q` / `Ctrl+C`, close modals or exit edit mode with `Esc`):
-- **`[1] Keyring`**: Automatically scans `keystore/`, displaying all keypair fingerprints, local labels, and Ed25519/X25519 file completeness with **inline role & secrecy annotations**; press `n` / `Enter` to generate a new keypair in a modal, `l` to set/clear a local key label, `p` to rotate the local private keypair backup password, or `r` to refresh.
-- **`[2] Encrypt`**: Supports **generating a new keypair & signing**, **encrypting with an existing public key (optional signing)**, and **symmetric password-only encryption (`.enc` / `SGPGv2`)**; fresh `.pubenc` (`SCFv2`) and `.enc` (`SGPGv2`) ciphertexts conceal signatures inside AEAD and apply length-hiding padding by default; displays a centered completion summary dialog upon finishing (showing output file, signature/key fingerprint, and secrecy/cross-machine guidance); press `f` / `Ctrl+O` on path fields to open the built-in File Browser modal, or `Tab` while editing for path auto-completion.
-- **`[3] Decrypt & Verify`**: Automatically inspects `.pubenc` (`SCFv2` / legacy `SCFv1`) or `.enc` (`SGPGv2` / legacy `SGPGv1`) headers without a password as you type or select via `f` / `Ctrl+O`, cross-references local `keystore/` and pins explicit signer trust anchors (never blindly trusting unauthenticated headers to alter key selection), enforces signature verification prior to writing output, and displays a centered completion & verification summary dialog.
-- **`[4] Password Gen`**: Adjust password length in real time (`←` / `→`) and press `Enter` / `g` to generate rejection-sampled high-entropy passwords without modulo bias.
+- **`[1] Keyring`**: Automatically scans `keystore/`, displaying all keypair fingerprints, local labels, and Ed25519/X25519 file completeness with **inline role & secrecy annotations**; press `Enter` on a non-empty keyring to select the highlighted key as encryption recipient and switch to `[2] Encrypt`, press `n` at any time to generate a new keypair in a modal (`Enter` also opens it when the keyring is empty), `l` to set/clear a local key label, `p` to rotate the local private keypair backup password, or `r` to refresh.
+- **`[2] Encrypt`**: Supports **generating a new keypair & signing**, **encrypting with an existing public key (optional signing)**, and **symmetric password-only encryption (`.enc` / `SGPGv2`)**; fresh `.pubenc` (`SCFv2`) ciphertexts conceal Ed25519 signatures inside AEAD, and both `.pubenc` (`SCFv2`) and `.enc` (`SGPGv2`) apply length-hiding padding by default; displays a centered completion summary dialog upon finishing (showing output file, signature/key fingerprint, and secrecy/cross-machine guidance); press `f` / `Ctrl+O` on path fields to open the built-in File Browser modal, or `Tab` while editing for path auto-completion.
+- **`[3] Decrypt & Verify`**: Automatically inspects `.pubenc` (`SCFv2` / legacy `SCFv1`) or `.enc` (`SGPGv2` / legacy `SGPGv1`) headers without a password as you type or select via `f` / `Ctrl+O`, cross-references local `keystore/` and pins explicit signer trust anchors (never blindly trusting unauthenticated headers to alter key selection), enforces signature verification by default for `.pubenc` prior to writing output, and displays a centered completion & verification summary dialog.
+- **`[4] Password Gen`**: Adjust password length in real time (`←` / `→`), press `Enter` / `g` to generate rejection-sampled high-entropy passwords without modulo bias (`v` to toggle mask, `c` to wipe memory).
 
 ---
 
@@ -125,13 +125,13 @@ One-click: Generate keypair → Encrypt keys → Sign → Encrypt file (outputs 
 yacrypt encrypt <file> [--label <alias>] [--output <out>] [--instructions] [--force]
 ```
 
-Encrypt with an existing recipient key or local label (optionally sign with your own `--sign-key`):
+Encrypt with an existing recipient key or local label (on an interactive TTY, omitting the value after `--key` or `--sign-key` opens a keyring selector; optionally sign with your own `--sign-key`):
 
 ```bash
-yacrypt encrypt <file> --key <x25519_public.asc | label | fp_prefix> [--sign-key <private.asc.enc | label | fp_prefix>] [--output <out>] [--instructions] [--force]
+yacrypt encrypt <file> --key [x25519_public.asc | label | fp_prefix] [--sign-key [private.asc.enc | label | fp_prefix]] [--output <out>] [--instructions] [--force]
 ```
 
-Encrypt directly with a password in symmetric mode (`SGPGv2` padded format, no public/private keys needed, outputs anonymous `<16hex>.enc` by default):
+Encrypt directly with a password in symmetric mode (`-c` / `--symmetric`, `SGPGv2` padded format, no public/private keys needed, outputs anonymous `<16hex>.enc` by default):
 
 ```bash
 yacrypt encrypt <file> -c [--output <out.enc>] [--force]
@@ -139,21 +139,22 @@ yacrypt encrypt <file> -c [--output <out.enc>] [--force]
 
 ### 3. `decrypt` — Decrypt a File (Recommended)
 
-Decrypt hybrid public-key encrypted file (`.pubenc`: supports `SCFv2` & legacy `SCFv1`; requires valid Ed25519 signature by default unless `--allow-unsigned` is passed):
+Decrypt hybrid public-key encrypted file (`.pubenc`: supports `SCFv2` & legacy `SCFv1`; requires valid Ed25519 signature by default unless `--allow-unsigned` is passed; `--private-key` or its value may be omitted on an interactive TTY to select from your keyring; `--require-signature` is the default for `.pubenc` and explicitly rejects unsigned `.enc` symmetric files):
 
 ```bash
 yacrypt decrypt <file.pubenc> \
-    --private-key <x25519_private_*.asc.enc | label | fp_prefix> \
-    [--signer <64-hex-fingerprint | label | public_fp.asc>] \
+    [--private-key [x25519_private_*.asc.enc | label | fp_prefix]] \
+    [--signer <64-hex-fingerprint | label | public_<fp>.asc>] \
+    [--require-signature] \
     [--allow-unsigned] \
     [--output <out>] \
     [--force]
 ```
 
-Decrypt symmetric password-encrypted file (`.enc`: auto-detects `SGPGv2` and legacy `SGPGv1` headers without `--private-key`):
+Decrypt symmetric password-encrypted file (`.enc`: auto-detects `SGPGv2` and legacy `SGPGv1` headers without `--private-key`; passing `--require-signature` rejects unsigned `.enc` files):
 
 ```bash
-yacrypt decrypt <file.enc> [-o <out>] [--force]
+yacrypt decrypt <file.enc> [-c] [-o <out>] [--force]
 ```
 
 ### 4. `inspect` — Inspect Encrypted File or Key Backup Without a Password
@@ -201,12 +202,12 @@ yacrypt key-label <key> [label] [--clear]
 
 ### 8. `key-export` (alias `export-key`) — Export Self-Signed Public Key Bundle
 
-Sign and export a combined Ed25519 + X25519 public key bundle using your local Ed25519 private key (outputs `yacrypt_pubkey_<FP16>.asc` by default; `<key>` accepts a local label, `>=16`-char fingerprint prefix, or key file path, and may be omitted on an interactive TTY to select from your keyring):
+Sign and export a combined Ed25519 + X25519 public key bundle using your local Ed25519 private key (outputs `yacrypt_pubkey_<FP16>.asc` by default; `[key]` accepts a local label, `>=16`-char fingerprint prefix, or key file path, and may be omitted on an interactive TTY to select from your keyring):
 
 ```bash
-yacrypt key-export <key> [-o <bundle.asc>] [--force]
+yacrypt key-export [key] [-o <bundle.asc>] [--force]
 # or
-yacrypt export-key <key> [-o <bundle.asc>] [--force]
+yacrypt export-key [key] [-o <bundle.asc>] [--force]
 ```
 
 ### 9. `key-import` (alias `import-key`) — Verify and Import Peer Public Key Bundle
@@ -237,14 +238,14 @@ Generate a random password of specified length (default 32 characters) using rej
 
 ### 12. `encrypt-file-with-key` — Encrypt with Existing Public Key
 
-`--public-key` and `--sign-key` accept key file paths, local labels, or `>=16`-char fingerprint prefixes (outputs `<input>.pubenc` by default):
+`--public-key` and `--sign-key` accept key file paths, local labels, or `>=16`-char fingerprint prefixes; on an interactive TTY, `--public-key` (and the value after `--sign-key`) can be omitted to select from your local keyring (outputs an anonymous random `<16hex>.pubenc` in the input file's directory by default using the `SCFv2` padded container):
 
 ```bash
 yacrypt encrypt-file-with-key \
     --input document.txt \
-    --public-key <x25519_public_*.asc | label | fp_prefix> \
-    [--sign-key <private_*.asc.enc | label | fp_prefix>] \
-    [--output document.txt.pubenc] \
+    [--public-key [x25519_public_*.asc | label | fp_prefix]] \
+    [--sign-key [private_*.asc.enc | label | fp_prefix]] \
+    [--output <out.pubenc>] \
     [--force]
 ```
 
@@ -253,7 +254,7 @@ yacrypt encrypt-file-with-key \
 Decrypt a local Ed25519 private key backup and export its PKCS#8 DER file (accepts `.asc.enc` path, local label, or `>=16`-char fingerprint prefix; omit on an interactive TTY to select from your keyring):
 
 ```bash
-yacrypt decrypt-private-key <keystore/private_<fp>.asc.enc | label | fp_prefix> [-o output.der] [--force]
+yacrypt decrypt-private-key [keystore/private_<fp>.asc.enc | label | fp_prefix] [-o output.der] [--force]
 ```
 
 ### 14. `completions` — Generate Shell Auto-Completion Script
@@ -275,4 +276,4 @@ yacrypt completions <bash|zsh|fish|powershell>
 - Ed25519 signature verification and signer fingerprint trust anchor matching are performed **before** writing the file; output is rejected if verification fails or the signer is untrusted
 - All sensitive memory is zeroized immediately after use (including TUI password input buffers and temporary CLI passwords)
 - Output and private key files are written using `create_new` + `O_NOFOLLOW` + `0o600` permissions by default, refusing to follow symlinks, write to non-regular files, or silently overwrite existing files
-- When receiving files over untrusted channels, prefer `--require-signature` together with `--signer <fingerprint | label>` to pin the expected signer
+- `.pubenc` decryption enforces Ed25519 signature verification by default (do not pass `--allow-unsigned` for untrusted inputs); when receiving files over untrusted channels, pin the expected signer trust anchor with `--signer <64-hex-fingerprint | label | public_<fp>.asc>`, and additionally pass `--require-signature` when the container type itself is untrusted to reject unsigned symmetric `.enc` files

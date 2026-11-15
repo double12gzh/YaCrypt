@@ -612,8 +612,8 @@ pub fn encrypt_workflow_with_new_keys_opts(
         To decrypt this file, run:\n\n\
           yacrypt decrypt {enc} \\\n\
               --private-key {priv_key}\n\n\
-        You will be prompted for the encryption password\n\
-        you set during key generation.\n\n\
+        You will be prompted for the backup password\n\
+        from key generation (auto-generated or user-set).\n\n\
         ⚠️  IMPORTANT:\n\
         - Keep your encryption password safe\n\
         - Do NOT store the password with this file\n\

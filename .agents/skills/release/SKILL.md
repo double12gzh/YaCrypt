@@ -13,10 +13,10 @@ Prepare a new release of `yacrypt` following these steps:
 1. **Run the shared gate**: `bash scripts/verify.sh`. Stop on any failure.
 2. **Record evidence** using [the acceptance template](../../../docs/templates/acceptance.md).
 3. **Determine Target Version**:
-   - Read the current version from `Cargo.toml` using the file viewing tool (never use bare `cat`).
+   - Read the current version from `Cargo.toml` and `crates/yacrypt-core/Cargo.toml` using the file viewing tool (never use bare `cat`).
    - Ask the user for the new target version number.
 4. **Update Version**:
-   - Update `version = "<new_version>"` in `Cargo.toml`.
+   - Update `version = "<new_version>"` in both `Cargo.toml` and `crates/yacrypt-core/Cargo.toml` (keeping workspace crate versions in sync) and refresh `Cargo.lock`.
 5. **Re-run `bash scripts/verify.sh` after the version/lockfile changes, then build the release binary**:
    ```bash
    cargo build --locked --workspace --release

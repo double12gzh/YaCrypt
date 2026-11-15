@@ -16,7 +16,7 @@
 
 ## 系统要求
 
-- Rust 1.70+ (Edition 2021)
+- Rust 1.88+ (Edition 2021)
 - Linux / macOS
 
 ## 安装
@@ -51,10 +51,10 @@ yacrypt tui
 ```
 
 包含 4 个核心工作视图与全局快捷键（支持数字键 `1`-`4` 或 `Tab` / `Shift+Tab` 切换，按 `?` / `F1` 打开内置文件作用、受众、保密等级与跨电脑说明手册，按 `Shift+L` / `F2` 实时切换 **中文 / English** 并自动记住偏好，`q` / `Ctrl+C` 安全退出并擦除口令缓冲，`Esc` 关闭弹窗或退出编辑态）：
-- **`[1] Keyring`**：自动扫描 `keystore/` 目录，展示所有密钥对指纹、本地别名及 5 类关联文件的**用途与保密级别标注**（公钥可分享 / 私钥 `.asc.enc` 绝密需备份）；按 `n` / `Enter` 弹窗生成新密钥对，按 `l` 设置/清除本地密钥别名，按 `p` 轮换本地私钥备份口令，按 `r` 刷新。
-- **`[2] Encrypt`**：支持 **自动生成新密钥对并签名加密**、**选择已有公钥加密（可选签名）** 以及 **纯口令对称加密（`.enc` / `SGPGv2`）** 三种模式；新生成的 `.pubenc` (`SCFv2`) 与 `.enc` (`SGPGv2`) 默认启用签名密文内层隐藏与长度混淆填充；加密完成后弹出居中完成摘要弹窗（展示输出文件、签名/密钥指纹与保密及跨机携带提示）；在文件路径栏按 `f` / `Ctrl+O` 唤起内置文件浏览器弹窗，编辑路径时按 `Tab` 自动补全。
-- **`[3] Decrypt & Verify`**：输入或通过 `f` / `Ctrl+O` 选择路径后实时调用免口令密文头透视（自动兼容识别 `SCFv2`/`SCFv1` `.pubenc` 与 `SGPGv2`/`SGPGv1` `.enc`），比对本地密钥环并固定预期签名者指纹信任锚（绝不盲信未认证密文头自动篡改选钥），落盘前强制完成验签，解密完成后同样弹出居中结果与验签摘要弹窗。
-- **`[4] Password Gen`**：实时调节口令长度（`←` / `→`），按 `Enter` / `g` 基于拒绝采样生成无模偏差的高熵随机口令。
+- **`[1] Keyring`**：自动扫描 `keystore/` 目录，展示所有密钥对指纹、本地别名及 5 类关联文件的**用途与保密级别标注**（公钥可分享 / 私钥 `.asc.enc` 绝密需备份）；非空密钥环按 `Enter` 选中当前高亮密钥作为加密接收方并切换到 `[2] Encrypt`，按 `n` 可随时弹窗生成新密钥对（密钥环为空时按 `Enter` 亦可新建），按 `l` 设置/清除本地密钥别名，按 `p` 轮换本地私钥备份口令，按 `r` 刷新。
+- **`[2] Encrypt`**：支持 **自动生成新密钥对并签名加密**、**选择已有公钥加密（可选签名）** 以及 **纯口令对称加密（`.enc` / `SGPGv2`）** 三种模式；新生成的 `.pubenc` (`SCFv2`) 默认将 Ed25519 签名隐入 AEAD 密文内层，且 `.pubenc` (`SCFv2`) 与 `.enc` (`SGPGv2`) 默认启用长度混淆填充；加密完成后弹出居中完成摘要弹窗（展示输出文件、签名/密钥指纹与保密及跨机携带提示）；在文件路径栏按 `f` / `Ctrl+O` 唤起内置文件浏览器弹窗，编辑路径时按 `Tab` 自动补全。
+- **`[3] Decrypt & Verify`**：输入或通过 `f` / `Ctrl+O` 选择路径后实时调用免口令密文头透视（自动兼容识别 `SCFv2`/`SCFv1` `.pubenc` 与 `SGPGv2`/`SGPGv1` `.enc`），比对本地密钥环并固定预期签名者指纹信任锚（绝不盲信未认证密文头自动篡改选钥），对 `.pubenc` 默认在落盘前强制完成验签，解密完成后同样弹出居中结果与验签摘要弹窗。
+- **`[4] Password Gen`**：实时调节口令长度（`←` / `→`），按 `Enter` / `g` 基于拒绝采样生成无模偏差的高熵随机口令（`v` 切换遮蔽/明文，`c` 擦除内存）。
 
 ---
 
@@ -125,13 +125,13 @@ yacrypt tui
 yacrypt encrypt <file> [--label <alias>] [--output <out>] [--instructions] [--force]
 ```
 
-使用已有接收方公钥/本地别名加密（可选传入自有 `--sign-key` 进行签名）：
+使用已有接收方公钥/本地别名加密（交互式 TTY 下省略 `--key` 或 `--sign-key` 的参数值时可列表选钥；可选传入自有 `--sign-key` 进行签名）：
 
 ```bash
-yacrypt encrypt <file> --key <x25519_public.asc | label | fp_prefix> [--sign-key <private.asc.enc | label | fp_prefix>] [--output <out>] [--instructions] [--force]
+yacrypt encrypt <file> --key [x25519_public.asc | label | fp_prefix] [--sign-key [private.asc.enc | label | fp_prefix]] [--output <out>] [--instructions] [--force]
 ```
 
-使用纯口令对称加密（`SGPGv2` 格式，带长度混淆填充，无需公私钥，默认输出匿名 `<16hex>.enc`）：
+使用纯口令对称加密（`-c` / `--symmetric`，`SGPGv2` 格式，带长度混淆填充，无需公私钥，默认输出匿名 `<16hex>.enc`）：
 
 ```bash
 yacrypt encrypt <file> -c [--output <out.enc>] [--force]
@@ -139,21 +139,22 @@ yacrypt encrypt <file> -c [--output <out.enc>] [--force]
 
 ### 3. `decrypt` — 解密文件（推荐）
 
-解密公钥混合加密文件（`.pubenc`：支持 `SCFv2` 与遗留 `SCFv1`；默认要求有效 Ed25519 签名，无签名文件需显式传 `--allow-unsigned`）：
+解密公钥混合加密文件（`.pubenc`：支持 `SCFv2` 与遗留 `SCFv1`；默认要求有效 Ed25519 签名，无签名文件需显式传 `--allow-unsigned`；交互式 TTY 下省略 `--private-key` 或省略其参数值时可从本地密钥环列表选钥；`--require-signature` 为 `.pubenc` 默认行为，并可显式拒绝无签名的 `.enc` 对称文件）：
 
 ```bash
 yacrypt decrypt <file.pubenc> \
-    --private-key <x25519_private_*.asc.enc | label | fp_prefix> \
-    [--signer <64-hex-fingerprint | label | public_fp.asc>] \
+    [--private-key [x25519_private_*.asc.enc | label | fp_prefix]] \
+    [--signer <64-hex-fingerprint | label | public_<fp>.asc>] \
+    [--require-signature] \
     [--allow-unsigned] \
     [--output <out>] \
     [--force]
 ```
 
-解密纯口令对称加密文件（`.enc`：自动检测 `SGPGv2` / 遗留 `SGPGv1` 头部，无需 `--private-key`）：
+解密纯口令对称加密文件（`.enc`：自动检测 `SGPGv2` / 遗留 `SGPGv1` 头部，无需 `--private-key`；若传入 `--require-signature` 将拒绝解密无签名的 `.enc` 文件）：
 
 ```bash
-yacrypt decrypt <file.enc> [-o <out>] [--force]
+yacrypt decrypt <file.enc> [-c] [-o <out>] [--force]
 ```
 
 ### 4. `inspect` — 免口令透视加密文件或密钥备份
@@ -201,12 +202,12 @@ yacrypt key-label <key> [label] [--clear]
 
 ### 8. `key-export`（别名 `export-key`）— 导出自签名合并公钥包
 
-使用本地 Ed25519 私钥对 Ed25519 + X25519 公钥生成自签名绑定包（默认输出 `yacrypt_pubkey_<FP16>.asc`；`<key>` 支持本地别名、`>=16` 位指纹前缀或密钥文件路径，交互式 TTY 下省略时可列表选钥）：
+使用本地 Ed25519 私钥对 Ed25519 + X25519 公钥生成自签名绑定包（默认输出 `yacrypt_pubkey_<FP16>.asc`；`[key]` 支持本地别名、`>=16` 位指纹前缀或密钥文件路径，交互式 TTY 下省略时可列表选钥）：
 
 ```bash
-yacrypt key-export <key> [-o <bundle.asc>] [--force]
+yacrypt key-export [key] [-o <bundle.asc>] [--force]
 # 或
-yacrypt export-key <key> [-o <bundle.asc>] [--force]
+yacrypt export-key [key] [-o <bundle.asc>] [--force]
 ```
 
 ### 9. `key-import`（别名 `import-key`）— 验证并导入对端公钥包
@@ -237,14 +238,14 @@ yacrypt gen-password [--length 32]
 
 ### 12. `encrypt-file-with-key` — 使用已有公钥直接加密
 
-`--public-key` 与 `--sign-key` 支持传入密钥文件路径、本地别名或 `>=16` 位指纹前缀（默认输出 `<input>.pubenc`）：
+`--public-key` 与 `--sign-key` 支持传入密钥文件路径、本地别名或 `>=16` 位指纹前缀；在交互式 TTY 下省略 `--public-key`（或省略 `--sign-key` 的参数值）均可从本地密钥环列表选钥（默认在输入文件同目录输出匿名随机 `<16hex>.pubenc`，采用 `SCFv2` 长度混淆填充容器）：
 
 ```bash
 yacrypt encrypt-file-with-key \
     --input document.txt \
-    --public-key <x25519_public_*.asc | label | fp_prefix> \
-    [--sign-key <private_*.asc.enc | label | fp_prefix>] \
-    [--output document.txt.pubenc] \
+    [--public-key [x25519_public_*.asc | label | fp_prefix]] \
+    [--sign-key [private_*.asc.enc | label | fp_prefix]] \
+    [--output <out.pubenc>] \
     [--force]
 ```
 
@@ -253,7 +254,7 @@ yacrypt encrypt-file-with-key \
 解密本地 Ed25519 私钥备份并导出 PKCS#8 DER 文件（支持传入 `.asc.enc` 路径、本地别名或 `>=16` 位指纹前缀，交互式 TTY 下省略时可列表选钥）：
 
 ```bash
-yacrypt decrypt-private-key <keystore/private_<fp>.asc.enc | label | fp_prefix> [-o output.der] [--force]
+yacrypt decrypt-private-key [keystore/private_<fp>.asc.enc | label | fp_prefix] [-o output.der] [--force]
 ```
 
 ### 14. `completions` — 生成 Shell 自动补全脚本
@@ -275,4 +276,4 @@ yacrypt completions <bash|zsh|fish|powershell>
 - Ed25519 签名验证与签名者指纹信任锚核验在写入磁盘**之前**执行，验证失败或签名者指纹不匹配则立即中止并拒绝输出任何数据
 - 所有敏感内存在使用后立即通过 `zeroize` 清零（含 TUI 口令输入缓冲与 CLI 临时口令）
 - 输出与私钥文件默认使用 `create_new` + `O_NOFOLLOW` + `0o600` 权限写入，拒绝跟随符号链接、非普通文件与静默覆盖既有文件
-- 跨不可信渠道接收文件时，建议使用 `--require-signature` 强制要求签名，并用 `--signer <指纹 | 本地别名>` 固定预期签名者
+- `.pubenc` 解密默认强制验证 Ed25519 数字签名（处理不可信来源输入时切勿传入 `--allow-unsigned`）；跨不可信渠道接收文件时，建议使用 `--signer <64-hex-fingerprint | label | public_<fp>.asc>` 固定预期签名者信任锚，当密文容器类型同样不可信时，可额外传入 `--require-signature` 明确拒绝无签名的纯口令对称 `.enc` 文件
