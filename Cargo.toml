@@ -20,7 +20,7 @@ strip = true
 panic = "abort"
 
 [dependencies]
-yacrypt-core = { path = "crates/yacrypt-core" }
+yacrypt-core = { path = "crates/yacrypt-core", version = "0.1.0" }
 argon2 = "0.5"
 base64 = "0.22"
 chacha20poly1305 = "0.10"

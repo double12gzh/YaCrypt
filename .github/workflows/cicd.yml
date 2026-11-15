@@ -121,24 +121,28 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Check if version already exists
-        id: check_version
-        run: |
-          VERSION=$(grep '^version =' Cargo.toml | cut -d'"' -f2)
-          CRATE_NAME=$(grep '^name =' Cargo.toml | cut -d'"' -f2)
-          if curl -sf "https://crates.io/api/v1/crates/${CRATE_NAME}/${VERSION}" | grep -q '"version"'; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Version ${VERSION} already exists on crates.io, skipping publish"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Version ${VERSION} not found on crates.io, will publish"
-          fi
-
-      - name: Publish to crates.io
-        if: steps.check_version.outputs.exists == 'false'
+      - name: Publish workspace crates to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
-        run: cargo publish
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version =' Cargo.toml | head -n1 | cut -d'"' -f2)
+
+          if curl -sf "https://crates.io/api/v1/crates/yacrypt-core/${VERSION}" | grep -q '"version"'; then
+            echo "yacrypt-core ${VERSION} already exists on crates.io, skipping"
+          else
+            echo "Publishing yacrypt-core ${VERSION}..."
+            cargo publish -p yacrypt-core --locked
+            echo "Waiting 15s for crates.io index propagation..."
+            sleep 15
+          fi
+
+          if curl -sf "https://crates.io/api/v1/crates/yacrypt/${VERSION}" | grep -q '"version"'; then
+            echo "yacrypt ${VERSION} already exists on crates.io, skipping"
+          else
+            echo "Publishing yacrypt ${VERSION}..."
+            cargo publish -p yacrypt --locked
+          fi
 
   # 创建 GitHub Release
   create-release:
