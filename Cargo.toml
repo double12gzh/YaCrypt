@@ -3,7 +3,7 @@ members = ["crates/yacrypt-core"]
 
 [package]
 name = "yacrypt"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
 authors = ["double12gzh"]
 license = "MIT"
