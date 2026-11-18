@@ -27,4 +27,4 @@ pi 使用 magpie/agentrouter/gpt-6.1-sol 写出 UI 修复、七项视口回归�
 ## 当前边界
 
 `watch` 运行原固定扫描器和已批准 backlog，不会每轮自动运行昂贵的完整 diagnose。diagnose/propose/approve 是显式入口；未安装常驻调度。批准者字段是本机操作者声明，不是身份认证；路径白名单不等于语义安全证明，密码学等专项变更仍需另外审查。
-代码与事实复盘写回候选分支；main 合并和 push 仍由本轮已获授权的协调器交付，不属于自动循环权限。详见 [验收](YC-009-acceptance.md) 和 [证据清单](evidence/YC-009/manifest.json)。
+代码与事实复盘写回候选分支；main 合并和 push 仍由本轮已获授权的协调器交付，不属于自动循环权限。详见 [验收](YC-009-acceptance.md) 和证据清单归档（`evidence/YC-009/manifest.json`，见历史提交 `80d7b6a`）。

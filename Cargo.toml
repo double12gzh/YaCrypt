@@ -11,6 +11,22 @@ description = "Secure file encryption/decryption CLI tool using Argon2id, XChaCh
 categories = ["security", "cryptography", "command-line-utilities"]
 keywords = ["encryption", "cryptography", "x25519", "ed25519", "xchacha20poly1305"]
 repository = "https://github.com/double12gzh/YaCrypt"
+exclude = [
+    ".agents/",
+    ".claude/",
+    ".cursor/",
+    ".githooks/",
+    ".github/",
+    ".pre-commit-config.yaml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "LESSONS.md",
+    "cliff.toml",
+    "deny.toml",
+    "docs/",
+    "scripts/",
+    "setup-dev.sh",
+]
 
 [profile.release]
 opt-level = "z"

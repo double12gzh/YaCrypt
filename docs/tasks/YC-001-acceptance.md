@@ -4,7 +4,7 @@
 - 验收者：独立 Agent `/root/independent_acceptance`（与实现会话分离，只读代码）。
 - base：45afbb9b107f397bc11bc5d9f65c81e0fe4fcda4；验收 head：8bc7e2fff41a9427e3008e1695a1b0084e9be29d；复验前后工作区干净。
 - 日期与平台：2026-11-01，macOS arm64。
-- [任务卡](YC-001.md)；[真实完整门禁证据](evidence/YC-001/README.md)。
+- [任务卡](YC-001.md)；真实完整门禁证据见历史归档 `evidence/YC-001/README.md`（提交 `80d7b6a`）。
 
 ## 首轮：ISSUES
 

@@ -1,6 +1,6 @@
 # YC-002 复盘
 
-任务：[YC-002](YC-002.md)；[独立验收](YC-002-acceptance.md)；[完整证据](evidence/YC-002/README.md)。
+任务：[YC-002](YC-002.md)；[独立验收](YC-002-acceptance.md)；完整证据见历史归档 `evidence/YC-002/README.md`（提交 `80d7b6a`）。
 范围：从已批准第一阶段 6d06318，到第二阶段集成目标 c5650c0。
 实际状态：第一阶段已合并 main；第二阶段实现、两个真实任务和独立验收完成，待人工集成 main。
 

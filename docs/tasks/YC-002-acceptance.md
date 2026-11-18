@@ -27,7 +27,7 @@
 
 验收者核实最终目标和两个完成任务的 worktree 干净，旧尝试保留草稿，台账两项 integrated，集成槽为空。
 目标为 codex/phase2-coordination；main 仍是已批准的第一阶段版本，第二阶段没有擅自合入 main。
-完整结果及原始日志见 [证据归档](evidence/YC-002/README.md)。
+完整结果及原始日志见历史证据归档 `evidence/YC-002/README.md`（提交 `80d7b6a`）。
 
 ## 验证边界
 

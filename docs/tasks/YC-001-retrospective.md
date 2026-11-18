@@ -1,6 +1,6 @@
 # YC-001 复盘
 
-- [任务](YC-001.md) / [独立验收](YC-001-acceptance.md) / [运行证据](evidence/YC-001/README.md)
+- [任务](YC-001.md) / [独立验收](YC-001-acceptance.md) / 运行证据（`evidence/YC-001/README.md`，见历史提交 `80d7b6a`）
 - base：45afbb9b107f397bc11bc5d9f65c81e0fe4fcda4；实现版本见验收报告。
 - 实际状态：本地实现与复验完成，独立验收已绑定实现提交、待人工集成；未发布。
 

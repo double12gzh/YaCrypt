@@ -1,8 +1,0 @@
-Python lacks waitid/WNOWAIT; restarting with /opt/homebrew/bin/python3
-{"state": "idle", "agent_runs": 0}
-[
-  {
-    "state": "idle",
-    "agent_runs": 0
-  }
-]
