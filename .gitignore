@@ -23,6 +23,7 @@ keystore/
 security-audit-*/
 SECURITY-AUDIT-*.md
 docs/tasks/evidence/
+docs/superpowers/
 
 # Python coordination tooling
 __pycache__/
